@@ -1,0 +1,349 @@
+import * as P from '@algosail/ply'
+import * as H from '@algosail/plydom/h'
+import * as F from '@algosail/plyfuture'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import type {
+  DurableObjectState,
+  WorkerContext,
+  WorkerRecord,
+} from '../src/workers.ts'
+import { mkdir, readText, stat, writeText } from '../src/disk.ts'
+import { stale } from '../src/events.ts'
+import { endpoint, page, text } from '../src/mod.ts'
+import { publish, wranglerConfig } from '../src/publish.ts'
+import { KitLive, worker } from '../src/workers.ts'
+import { inDir } from './temp.ts'
+
+const record: WorkerRecord = {
+  manifest: {},
+  styles: null,
+  styleIds: [],
+}
+
+const quiet: WorkerContext = { waitUntil: () => {} }
+
+class FakeSocket extends EventTarget {
+  readonly sent: string[] = []
+  accepted = false
+
+  accept(): void {
+    this.accepted = true
+  }
+
+  send(data: string): void {
+    this.sent.push (String (data))
+  }
+
+  close(): void {
+    this.dispatchEvent (new Event ('close'))
+  }
+}
+
+class FakePair {
+  readonly 0: FakeSocket
+  readonly 1: FakeSocket
+
+  constructor() {
+    this[0] = new FakeSocket ()
+    this[1] = new FakeSocket ()
+    latest = this
+    server = this[1]
+  }
+}
+
+let latest: FakePair | undefined
+let server: FakeSocket | undefined
+
+const socketHost = (): { WebSocketPair?: unknown } =>
+  globalThis as { WebSocketPair?: unknown }
+
+const closeServer = (): void => {
+  server?.close ()
+  server = undefined
+}
+
+const usingPair = async (run: () => Promise<void>): Promise<void> => {
+  const prior = socketHost ().WebSocketPair
+  latest = undefined
+  server = undefined
+  socketHost ().WebSocketPair = FakePair
+  try {
+    await run ()
+  } finally {
+    if (prior === undefined) delete socketHost ().WebSocketPair
+    else socketHost ().WebSocketPair = prior
+    closeServer ()
+  }
+}
+
+const stateWith = (sockets: FakeSocket[]): DurableObjectState => ({
+  acceptWebSocket(ws: WebSocket): void {
+    sockets.push (ws as unknown as FakeSocket)
+  },
+  getWebSockets(): readonly WebSocket[] {
+    return sockets as unknown as readonly WebSocket[]
+  },
+})
+
+test ('kit/workers — the page is drawn, and the client address is taken from the platform', async () => {
+  const app = worker ({
+    routes: [
+      page ({
+        pattern: '/',
+        view: (one) => H.p ([P.fromMaybe ('nobody') (one.client)]),
+      }),
+    ],
+  }, { record })
+
+  const res = await app.fetch (
+    new Request ('http://x/', {
+      headers: { 'cf-connecting-ip': '203.0.113.5' },
+    }),
+    {},
+    quiet,
+  )
+  assert.deepStrictEqual (res.status, 200)
+  assert.ok ((await res.text ()).includes ('203.0.113.5'))
+})
+
+test ('kit/workers — a file under the prefix comes from ASSETS, a page does not', async () => {
+  const seen: string[] = []
+  const app = worker ({
+    routes: [page ({ pattern: '/', view: () => H.p (['page']) })],
+    assets: { dir: 'file:///unused/', base: '/static/' },
+  }, { record })
+
+  const env = {
+    ASSETS: {
+      fetch: (input: RequestInfo | URL): Promise<Response> => {
+        const url = input instanceof Request ? input.url : String (input)
+        seen.push (new URL (url).pathname)
+        return Promise.resolve (
+          new URL (url).pathname === '/static/lamp.svg'
+            ? new Response ('<svg/>', {
+              headers: { 'content-type': 'image/svg+xml' },
+            })
+            : new Response (null, { status: 404 }),
+        )
+      },
+    },
+  }
+
+  const file = await app.fetch (
+    new Request ('http://x/static/lamp.svg'),
+    env,
+    quiet,
+  )
+  assert.deepStrictEqual (file.status, 200)
+  assert.deepStrictEqual (await file.text (), '<svg/>')
+
+  const missing = await app.fetch (
+    new Request ('http://x/static/gone.svg'),
+    env,
+    quiet,
+  )
+  assert.deepStrictEqual (missing.status, 404)
+
+  const pageRes = await app.fetch (new Request ('http://x/'), env, quiet)
+  assert.deepStrictEqual (pageRes.status, 200)
+  assert.ok ((await pageRes.text ()).includes ('page'))
+  assert.deepStrictEqual (seen.includes ('/'), false)
+})
+
+test ('kit/workers — stale reaches a listener through KitLive', async () => {
+  const sockets: FakeSocket[] = []
+  const live = new KitLive (stateWith (sockets), {})
+  const pending: Promise<unknown>[] = []
+  const app = worker ({
+    routes: [
+      endpoint ({
+        pattern: '/mark',
+        on: {
+          POST: (ctx) => {
+            stale (ctx) ('notes')
+            return F.resolve (text ('ok'))
+          },
+        },
+      }),
+    ],
+    include: ['live'],
+  }, { record })
+
+  const env = {
+    KIT_LIVE: {
+      idFromName: () => 'kit',
+      get: () => live,
+    },
+  }
+  const waiting: WorkerContext = {
+    waitUntil: (promise) => {
+      pending.push (promise)
+    },
+  }
+
+  const plain = await app.fetch (new Request ('http://x/live'), env, waiting)
+  assert.deepStrictEqual (plain.status, 426)
+  assert.deepStrictEqual (plain.headers.get ('upgrade'), 'websocket')
+  assert.deepStrictEqual (sockets.length, 0)
+
+  const bad = await live.fetch ('https://kit-live/send', {
+    method: 'POST',
+    body: '{',
+  })
+  assert.deepStrictEqual (bad.status, 400)
+
+  await usingPair (async () => {
+    const opened = await app.fetch (
+      new Request ('http://x/live', { headers: { upgrade: 'websocket' } }),
+      env,
+      waiting,
+    )
+    assert.deepStrictEqual (opened.status, 101)
+    assert.deepStrictEqual (opened.headers.get ('upgrade'), 'websocket')
+    assert.deepStrictEqual (sockets.length, 1)
+    assert.deepStrictEqual (sockets[0], server)
+    assert.deepStrictEqual (server?.accepted, false)
+
+    const marked = await app.fetch (
+      new Request ('http://x/mark', { method: 'POST' }),
+      env,
+      waiting,
+    )
+    assert.deepStrictEqual (marked.status, 200)
+    await Promise.all (pending)
+    assert.deepStrictEqual (JSON.parse (sockets[0]?.sent[0] ?? ''), {
+      event: 'kit-part',
+      data: 'notes',
+    })
+  })
+})
+
+test ('kit/workers — without KIT_LIVE an ordinary GET asks for an upgrade', async () => {
+  const app = worker ({ routes: [], include: ['live'] }, { record })
+  const res = await app.fetch (new Request ('http://x/live'), {}, quiet)
+  assert.deepStrictEqual (res.status, 426)
+  assert.deepStrictEqual (res.headers.get ('upgrade'), 'websocket')
+  await res.body?.cancel ()
+})
+
+test ('kit/workers — without the binding the socket listens in the isolate', async () =>
+  usingPair (async () => {
+    const app = worker ({
+      routes: [
+        endpoint ({
+          pattern: '/mark',
+          on: {
+            POST: (ctx) => {
+              stale (ctx) ('shelf')
+              return F.resolve (text ('ok'))
+            },
+          },
+        }),
+      ],
+      include: ['live'],
+    }, { record })
+    const opened = await app.fetch (
+      new Request ('http://x/live', { headers: { upgrade: 'websocket' } }),
+      {},
+      quiet,
+    )
+    assert.deepStrictEqual (opened.status, 101)
+    assert.deepStrictEqual (server?.accepted, true)
+    const marked = await app.fetch (
+      new Request ('http://x/mark', { method: 'POST' }),
+      {},
+      quiet,
+    )
+    assert.deepStrictEqual (marked.status, 200)
+    assert.deepStrictEqual (JSON.parse (server?.sent[0] ?? ''), {
+      event: 'kit-part',
+      data: 'shelf',
+    })
+  }))
+
+test ('kit/workers — someone else\'s /live does not become a socket', async () =>
+  usingPair (async () => {
+    const app = worker ({
+      routes: [
+        endpoint ({
+          pattern: '/live',
+          on: { GET: () => F.resolve (text ('mine')) },
+        }),
+      ],
+      include: ['live'],
+    }, { record })
+    const res = await app.fetch (
+      new Request ('http://x/live', { headers: { upgrade: 'websocket' } }),
+      {},
+      quiet,
+    )
+    assert.deepStrictEqual (await res.text (), 'mine')
+    assert.deepStrictEqual (latest, undefined)
+  }))
+
+test ('kit/publish — chunks go into assets, and the record stays beside them', () =>
+  inDir (async (root) => {
+    const chunks = `${root}/chunks`
+    const files = `${root}/static`
+    const to = `${root}/dist`
+    await mkdir (chunks)
+    await mkdir (`${files}/img`, { recursive: true })
+    await writeText (
+      `${chunks}/kit-build.json`,
+      JSON.stringify ({
+        manifest: { counter: '/_kit/counter-abc.js' },
+        styles: '/_kit/styles-abc.css',
+        styleIds: ['one'],
+        files: ['counter-abc.js', 'styles-abc.css'],
+      }),
+    )
+    await writeText (`${chunks}/counter-abc.js`, 'console.log(1)')
+    await writeText (`${chunks}/styles-abc.css`, 'p{}')
+    await writeText (
+      `${chunks}/kit-data.json`,
+      JSON.stringify ({ '/': { n: 1 } }),
+    )
+    await writeText (`${files}/img/lamp.svg`, '<svg/>')
+    await writeText (`${files}/notes.log`, 'do not serve')
+
+    const laid = await publish ({
+      outDir: chunks,
+      to,
+      assets: {
+        dir: files,
+        serves: (name) => !name.endsWith ('.log'),
+      },
+    })
+
+    assert.deepStrictEqual (
+      await readText (`${to}/assets/_kit/counter-abc.js`),
+      'console.log(1)',
+    )
+    assert.deepStrictEqual (
+      await readText (`${to}/assets/static/img/lamp.svg`),
+      '<svg/>',
+    )
+    await assert.rejects (() => stat (`${to}/assets/static/notes.log`))
+    await assert.rejects (() => stat (`${to}/assets/_kit/kit-build.json`))
+    assert.ok ((await readText (`${to}/assets/_headers`)).includes ('public, max-age=31536000, immutable'))
+    const written = JSON.parse (await readText (laid.record))
+    assert.deepStrictEqual (written.manifest.counter, '/_kit/counter-abc.js')
+    assert.deepStrictEqual (written.styleIds, ['one'])
+    assert.deepStrictEqual (written.data, { '/': { n: 1 } })
+    assert.deepStrictEqual (laid.assets, `${to}/assets`)
+  }))
+
+test ('kit/publish — wranglerConfig names the worker, the assets, and KitLive', () => {
+  const written = wranglerConfig ({ name: 'reading-room' })
+  assert.ok ((written).includes ('"name": "reading-room"'))
+  assert.ok ((written).includes ('"main": "./worker.ts"'))
+  assert.ok ((written).includes ('"binding": "ASSETS"'))
+  assert.ok ((written).includes ('"class_name": "KitLive"'))
+  assert.ok ((written).includes ('"storage": "sqlite"'))
+  assert.deepStrictEqual (
+    wranglerConfig ({ name: 'x', live: false }).includes ('KitLive'),
+    false,
+  )
+  assert.deepStrictEqual (written.includes ('nodejs_compat'), false)
+})

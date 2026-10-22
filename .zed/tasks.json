@@ -1,0 +1,7 @@
+[
+  {
+    "label": "node test",
+    "command": "node --test $ZED_FILE",
+    "tags": ["js-test"],
+  },
+]

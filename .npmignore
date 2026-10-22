@@ -1,0 +1,6 @@
+.DS_Store
+.zed
+node_modules
+test
+tsconfig.json
+tsconfig.build.json
