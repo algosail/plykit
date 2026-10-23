@@ -528,7 +528,7 @@ test ('kit/router — a layout without its own load is drawn with empty data', a
 
 async function islandsReading(dir: string): Promise<URL> {
   const kit = new URL ('../src/mod.ts', import.meta.url).href
-  const h = new URL ('../../plydom/src/h.ts', import.meta.url).href
+  const h = import.meta.resolve ('@algosail/plydom/h')
   await writeText (
     `${dir}/reader.ts`,
     [
