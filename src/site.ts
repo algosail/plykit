@@ -7,7 +7,7 @@ import type { Route } from './types.ts'
 import { app } from './app.ts'
 import { chunkDir } from './build.ts'
 import { addressesOf } from './data.ts'
-import { copyFile, mkdir, readDir, writeText } from './disk.ts'
+import { copyFile, mkdir, readDir, within, writeText } from './disk.ts'
 import { flat } from './router.ts'
 import { directory, STATIC_BASE } from './static.ts'
 
@@ -196,11 +196,17 @@ const everythingIn =
 const pathOf = (pre: string) => (entry: DirEntry): string =>
   pre + entry.name
 
-const isKept =
-  (keep: (name: string) => boolean, pre: string) =>
-  (entry: DirEntry): boolean => entry.isFile && keep (pathOf (pre) (entry))
+const keptOut = (skip: string | undefined) => (name: string): boolean =>
+  skip === undefined || (name !== skip && !name.startsWith (`${skip}/`))
 
-const isDeeper = (entry: DirEntry): boolean => entry.isDirectory
+const isKept =
+  (keep: (name: string) => boolean, skip: string | undefined, pre: string) =>
+  (entry: DirEntry): boolean =>
+    entry.isFile && keep (pathOf (pre) (entry)) && keptOut (skip) (pathOf (pre) (entry))
+
+const goesDeeper =
+  (skip: string | undefined, pre: string) => (entry: DirEntry): boolean =>
+    entry.isDirectory && keptOut (skip) (pathOf (pre) (entry))
 
 const copyingTo =
   (source: URL, to: URL) => (entry: DirEntry): F.Future<unknown, void> =>
@@ -212,11 +218,12 @@ async function copyInto(
   from: string | URL,
   to: URL,
   keep: (name: string) => boolean,
+  skip?: string,
   pre = '',
 ): Promise<readonly string[]> {
   const source = directory (from)
   const all = await readDir (source)
-  const entries = P.filter (isKept (keep, pre)) (all)
+  const entries = P.filter (isKept (keep, skip, pre)) (all)
   await mkdir (to, { recursive: true })
   await F.promise (
     F.parallel (Number.POSITIVE_INFINITY) (
@@ -229,9 +236,10 @@ async function copyInto(
         new URL (entry.name + '/', source),
         new URL (entry.name + '/', to),
         keep,
+        skip,
         pathOf (pre) (entry) + '/',
       ),
-    ) (P.filter (isDeeper) (all)),
+    ) (P.filter (goesDeeper (skip, pre)) (all)),
   )
   return P.concat (P.map (pathOf (pre)) (entries)) (deeper.flat ())
 }
@@ -318,20 +326,23 @@ const besideBase = <S>(config: Config<S>): string =>
 const besideFor = async <S>(
   config: Config<S>,
   out: URL,
-): Promise<readonly string[]> =>
-  P.concat (await besideAssets (config, out)) (
+): Promise<readonly string[]> => {
+  const chunks = await chunkDir (config, false)
+  return P.concat (await besideAssets (config, out, chunks)) (
     await copyInto (
-      await chunkDir (config, false),
+      chunks,
       new URL (besideBase (config), out),
       (name: string) => CHUNKS.test (name),
     ),
   )
+}
 
 const keepAll = (_: string): boolean => true
 
 function besideAssets<S>(
   config: Config<S>,
   out: URL,
+  chunks: string,
 ): Promise<readonly string[]> {
   return P.maybe_ (
     () => Promise.resolve<readonly string[]> ([]),
@@ -341,6 +352,7 @@ function besideAssets<S>(
         assets.dir,
         new URL (P.defaultTo (STATIC_BASE) (assets.base).replace (/^\//, ''), out),
         P.defaultTo (keepAll) (assets.serves),
+        within (assets.dir, chunks),
       ),
   ) (P.fromNullable (config.assets))
 }

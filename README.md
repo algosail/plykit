@@ -123,9 +123,9 @@ plykit preview [--app app.ts]
 Where chunks are put if the directory is not named:
 
 1. `outDir`, if it is set.
-2. Otherwise `_kit/` next to `assets.dir`.
-3. Otherwise the `plykit` commands set `dist/chunks` themselves.
-4. A call to `build` or `chunkDir` with neither directory throws: the chunks have nowhere to land.
+2. Otherwise `.kit` at the application root, the current directory. This folder is kit's own, the way `.next` is Next's. It is not written inside `assets`.
+
+The browser still asks for those files at `/_kit/` (or `base`). `assets` stays the application's own files, at `/static/` unless `assets.base` says otherwise.
 
 A relative `outDir` is resolved from the current directory. The `to` field of
 `publish` does not work that way: a relative string there is resolved from the
@@ -785,17 +785,17 @@ and `listen` and prints the address. This target does not create
 `wrangler.jsonc`, and it does not change one that is already there.
 `dist/worker.ts` from an earlier build stays where it is too.
 
-If the application has neither `outDir` nor `assets`, the server fills in
-`dist/chunks`, the same directory the command chose at build. `include` with
-`live` on this entry is one process's channel. The `KitLive` class is not
-exported here.
+If the application does not set `outDir`, the server fills in `.kit`, the same
+directory the command chose at build. `include` with `live` on this entry is
+one process's channel. The `KitLive` class is not exported here.
 
 After the report, `static` calls `staticSite` with `build: false` and writes
 files into `dist/`. `record.json`, `worker.ts`, and `wrangler.jsonc` do not
-appear. The build chunks stay in their own directory (`dist/chunks`, if the
-application did not set one). Only the island files are copied into the site,
-under the chunk prefix. Which routes land in the directory is described
-below, in [Static site](#static-site).
+appear. The build chunks stay in `.kit` (or in `outDir`, when that was set).
+Only the island files are copied into the site, under the chunk prefix. A
+chunk directory that sits inside `assets` is not copied again with the
+application's files. Which routes land in the directory is described below,
+in [Static site](#static-site).
 
 The same steps, called from code, are imported from `@algosail/plykit/node`.
 

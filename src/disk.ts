@@ -194,6 +194,24 @@ export const realpath = (target: string | URL): Promise<string> =>
   fs.realpath (asPath (target))
 
 /**
+ * The path of `child` inside `root`, with `/` between the parts.
+ * Absent when `child` is the root itself or stands outside it.
+ * @example
+ * ```ts
+ * within ('/app/static', '/app/static/_kit') // => '_kit'
+ * within ('/app/static', '/app/.kit') // => undefined
+ * ```
+ */
+export const within = (
+  root: string | URL,
+  child: string | URL,
+): string | undefined => {
+  const rel = path.relative (path.resolve (asPath (root)), path.resolve (asPath (child)))
+  const outside = rel === '' || rel === '..' || rel.startsWith (`..${path.sep}`) || path.isAbsolute (rel)
+  return outside ? undefined : rel.split (path.sep).join ('/')
+}
+
+/**
  * An empty directory under the system temp directory, named with `prefix`.
  * @example
  * ```ts

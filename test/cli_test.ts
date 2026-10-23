@@ -203,7 +203,7 @@ test ('plykit build --target node writes the server and leaves wrangler.jsonc al
     assert.ok ((server).includes ("from '@algosail/plykit/node'"))
     assert.ok ((server).includes ('listen(await serve(config))'))
     assert.ok ((server).includes ('app.ts'))
-    assert.ok ((server).includes ("outDir: 'dist/chunks'"))
+    assert.ok ((server).includes ("outDir: '.kit'"))
     assert.deepStrictEqual (server.includes ('@algosail/plykit/workers'), false)
     const record = JSON.parse (await readText (`${dir}/dist/record.json`)) as {
       manifest: unknown

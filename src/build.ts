@@ -198,16 +198,8 @@ export type Built = {
   readonly data: P.Maybe<Prepared>
 }
 
-const inside = (one: { readonly dir: URL | string }): URL | string =>
-  new URL ('_kit/', new URL (one.dir, 'file:///'))
-
-const besideAssets = (
-  assets?: { readonly dir: URL | string },
-): P.Maybe<URL | string> => P.map (inside) (P.fromNullable (assets))
-
-const whyNowhereToPut = (): string =>
-  'build: nowhere to put the chunks — give `outDir`, or `assets` so they can ' +
-  'go in `_kit/` beside the files it serves'
+/** Where chunks go when `outDir` is not set. It sits at the application root, and it is not part of `assets`. */
+export const KIT_DIR = '.kit'
 
 /** Where a build leaves its own inventory, so the next one can clear it. */
 export const RECORD = 'kit-build.json'
@@ -595,7 +587,7 @@ const bundle = (
  * ```ts
  * // build :: Options -> Promise Built
  * const built = await build ({
- *   outDir: `${import.meta.dirname}/static/_kit`,
+ *   outDir: `${import.meta.dirname}/.kit`,
  * })
  * built.manifest.counter
  * // => '/_kit/counter.js'
@@ -645,28 +637,22 @@ const writeStyles = (outDir: string): F.Future<unknown, P.Maybe<Written>> =>
   ) (P.fromPredicate (isBlank) (styleSheet ()))
 
 /**
- * The directory chunks go in: the one that was asked for, or the default beside the islands.
+ * The directory chunks go in: `outDir`, or `.kit` at the application root.
+ * `.kit` belongs to kit. It is not written inside `assets`. The browser still asks for `/_kit/`.
  * @example
  * ```ts
  * // chunkDir :: Where -> Task String
- * await chunkDir ({ islands }) // => '/app/example/static/_kit'
+ * await chunkDir ({}) // => '/app/example/.kit'
  * ```
  */
 export async function chunkDir(
   where: {
     readonly outDir?: URL | string
-    readonly assets?: { readonly dir: URL | string }
   },
   create = true,
 ): Promise<string> {
-  const target = P.maybe_<URL | string> (
-    () => refuse (whyNowhereToPut ()),
-  ) (
-    P.I<URL | string>,
-  ) (
-    P.alt (besideAssets (where.assets)) (
-      P.fromNullable<URL | string> (where.outDir),
-    ),
+  const target = P.fromMaybe<URL | string> (KIT_DIR) (
+    P.fromNullable<URL | string> (where.outDir),
   )
   await F.promise (
     P.boolean<F.Future<unknown, void>> (F.resolve (undefined)) (
@@ -991,7 +977,7 @@ const finished = <S>(one: Building<S>): F.Future<unknown, Built> =>
  * ```ts
  * // build :: Options -> Promise Built
  * const built = await build ({
- *   outDir: `${import.meta.dirname}/static/_kit`,
+ *   outDir: `${import.meta.dirname}/.kit`,
  * })
  * built.manifest.counter
  * // => '/_kit/counter.js'

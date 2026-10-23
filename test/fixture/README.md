@@ -104,8 +104,9 @@ npm run demo
 Brings the reading room up at <http://localhost:8000> (the port is changed
 through `PORT`). This is `dev`, not `serve`: the island chunks are built at
 startup, every answer is written to the log, and an open page reloads itself
-when `--watch` brings the server up again. The chunks are put in `static/_kit/`
-— every run builds them, and they have nothing to do in the repository.
+when `--watch` brings the server up again. The chunks are put in `.kit/`
+at the application root — every run builds them, and they have nothing to do
+in the repository.
 
 The package tests are run against the same application:
 

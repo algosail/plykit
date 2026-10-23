@@ -5,7 +5,7 @@ import type { Prebuilt } from './data.ts'
 import type { DirEntry } from './disk.ts'
 import type { StaticOptions } from './static.ts'
 import { RECORD } from './build.ts'
-import { copyFile, mkdir, readDir, readText, writeText } from './disk.ts'
+import { copyFile, mkdir, readDir, readText, rm, stat, within, writeText } from './disk.ts'
 import { readPrebuilt } from './read.ts'
 import { directory, forever } from './static.ts'
 
@@ -111,20 +111,27 @@ const copyFiles = async (
   )
 }
 
-const kept =
-  (keep: (name: string) => boolean, pre: string) =>
-  (entry: DirEntry): boolean => entry.isFile && keep (pre + entry.name)
+const keptOut = (skip: string | undefined) => (name: string): boolean =>
+  skip === undefined || (name !== skip && !name.startsWith (`${skip}/`))
 
-const isDeeper = (entry: DirEntry): boolean => entry.isDirectory
+const kept =
+  (keep: (name: string) => boolean, skip: string | undefined, pre: string) =>
+  (entry: DirEntry): boolean =>
+    entry.isFile && keep (pre + entry.name) && keptOut (skip) (pre + entry.name)
+
+const goesDeeper =
+  (skip: string | undefined, pre: string) => (entry: DirEntry): boolean =>
+    entry.isDirectory && keptOut (skip) (pre + entry.name)
 
 async function copyTree(
   from: URL,
   to: URL,
   keep: (name: string) => boolean,
+  skip?: string,
   pre = '',
 ): Promise<readonly string[]> {
   const all = await readDir (from)
-  const entries = P.filter (kept (keep, pre)) (all)
+  const entries = P.filter (kept (keep, skip, pre)) (all)
   await mkdir (to, { recursive: true })
   await F.promise (
     F.parallel (Number.POSITIVE_INFINITY) (
@@ -141,9 +148,10 @@ async function copyTree(
         new URL (`${entry.name}/`, from),
         new URL (`${entry.name}/`, to),
         keep,
+        skip,
         `${pre}${entry.name}/`,
       ),
-    ) (P.filter (isDeeper) (all)),
+    ) (P.filter (goesDeeper (skip, pre)) (all)),
   )
   return P.concat (P.map ((entry: DirEntry) => pre + entry.name) (entries)) (
     deeper.flat (),
@@ -176,7 +184,7 @@ type WorkerRecordJson = {
  * ```ts
  * // publish :: PublishOptions -> Promise Published
  * const laid = await publish ({
- *   outDir: './dist/chunks',
+ *   outDir: './.kit',
  *   to: './dist',
  *   assets: { dir: './static' },
  * })
@@ -190,6 +198,10 @@ export async function publish(options: PublishOptions): Promise<Published> {
   const base = withSlash (P.defaultTo (CHUNK_BASE) (options.base))
   const inventory = await F.promise (reading (outDir))
   const assets = directory (`${to}/assets/`)
+  await stat (assets).then (
+    () => rm (assets, { recursive: true }),
+    () => undefined,
+  )
   const chunks = new URL (relative (base), assets)
   await copyFiles (outDir, chunks, inventory.files)
   const own = options.assets
@@ -197,6 +209,7 @@ export async function publish(options: PublishOptions): Promise<Published> {
     directory (own.dir),
     new URL (relative (withSlash (P.defaultTo (FILE_BASE) (own.base))), assets),
     P.defaultTo<(name: string) => boolean> (P.K (true)) (own.serves),
+    within (directory (own.dir), outDir),
   )
   await writeText (new URL ('_headers', assets), headersFor (base))
   const record = `${to}/record.json`

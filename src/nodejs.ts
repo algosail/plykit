@@ -6,7 +6,7 @@ export type { Config } from './app.ts'
 export { listen } from './listen.ts'
 export type { Listening } from './listen.ts'
 
-export { build, chunkDir, discover, PUBLIC_PREFIX, report } from './build.ts'
+export { KIT_DIR, build, chunkDir, discover, PUBLIC_PREFIX, report } from './build.ts'
 export type {
   Built,
   Inlined,

@@ -8,7 +8,8 @@ import type {
   WorkerContext,
   WorkerRecord,
 } from '../src/workers.ts'
-import { mkdir, readText, stat, writeText } from '../src/disk.ts'
+import { chunkDir } from '../src/build.ts'
+import { mkdir, readText, realpath, stat, writeText } from '../src/disk.ts'
 import { stale } from '../src/events.ts'
 import { css, endpoint, page, resetStyles, styleIds, text } from '../src/mod.ts'
 import { publish, wranglerConfig } from '../src/publish.ts'
@@ -379,6 +380,55 @@ test ('kit/publish — chunks go into assets, and the record stays beside them',
     assert.deepStrictEqual (written.styleIds, ['one'])
     assert.deepStrictEqual (written.data, { '/': { n: 1 } })
     assert.deepStrictEqual (laid.assets, `${to}/assets`)
+  }))
+
+test ('kit/build — without outDir the chunks go to .kit, not into the assets', () =>
+  inDir (async (dir) => {
+    const back = process.cwd ()
+    try {
+      process.chdir (dir)
+      await mkdir (`${dir}/static`)
+      const got = await chunkDir ({})
+      assert.deepStrictEqual (got, await realpath (`${dir}/.kit`))
+      await assert.rejects (() => stat (`${dir}/static/_kit`))
+    } finally {
+      process.chdir (back)
+    }
+  }))
+
+test ('kit/publish — a chunk directory inside the assets is copied once', () =>
+  inDir (async (root) => {
+    const files = `${root}/static`
+    const chunks = `${files}/_kit`
+    const to = `${root}/dist`
+    await mkdir (`${chunks}`, { recursive: true })
+    await mkdir (`${files}/img`, { recursive: true })
+    await mkdir (`${to}/assets/static/_kit`, { recursive: true })
+    await writeText (`${to}/assets/static/_kit/stale.js`, 'old')
+    await writeText (
+      `${chunks}/kit-build.json`,
+      JSON.stringify ({
+        manifest: { counter: '/_kit/counter-abc.js' },
+        styles: null,
+        styleIds: [],
+        files: ['counter-abc.js'],
+      }),
+    )
+    await writeText (`${chunks}/counter-abc.js`, 'console.log(1)')
+    await writeText (`${files}/img/lamp.svg`, '<svg/>')
+
+    await publish ({ outDir: chunks, to, assets: { dir: files } })
+
+    assert.deepStrictEqual (
+      await readText (`${to}/assets/_kit/counter-abc.js`),
+      'console.log(1)',
+    )
+    assert.deepStrictEqual (
+      await readText (`${to}/assets/static/img/lamp.svg`),
+      '<svg/>',
+    )
+    await assert.rejects (() => stat (`${to}/assets/static/_kit`))
+    await assert.rejects (() => stat (`${to}/assets/static/_kit/stale.js`))
   }))
 
 test ('kit/publish — wranglerConfig names the worker, the assets, and KitLive', () => {

@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 import type { Config } from './app.ts'
 import type { KitIsland } from './build.ts'
 import { dev, serve } from './app.ts'
-import { build, chunkDir, report } from './build.ts'
+import { build, chunkDir, KIT_DIR, report } from './build.ts'
 import { writeText } from './disk.ts'
 import { listen } from './listen.ts'
 import { publish, wranglerConfig } from './publish.ts'
@@ -72,9 +72,7 @@ const nameOf = async (asked: string | undefined): Promise<string> => {
 }
 
 const settled = (config: Config): Config =>
-  config.outDir !== undefined || config.assets !== undefined
-    ? config
-    : { ...config, outDir: 'dist/chunks' }
+  config.outDir !== undefined ? config : { ...config, outDir: KIT_DIR }
 
 const devCommand = async (config: Config): Promise<void> => {
   const running = await listen (await dev (settled (config)))
@@ -107,9 +105,9 @@ const serverSource = (appFile: string): string =>
 import application from ${JSON.stringify (fromHere (appFile))}
 
 const config =
-  application.outDir !== undefined || application.assets !== undefined
+  application.outDir !== undefined
     ? application
-    : { ...application, outDir: 'dist/chunks' }
+    : { ...application, outDir: '${KIT_DIR}' }
 
 const running = await listen(await serve(config))
 console.log('http://localhost:' + running.port)
