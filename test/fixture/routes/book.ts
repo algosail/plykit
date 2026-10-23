@@ -25,7 +25,7 @@ import * as Notes from '../records/notes.ts'
 import { margins } from '../ui/margins.ts'
 import { link, quiet } from '../ui/text.ts'
 
-const PATTERN = '/book/[slug]'
+const PATTERN = '/book/:slug'
 export const href = routeHref (PATTERN)
 
 /** What this page shows. */

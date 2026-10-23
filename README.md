@@ -159,18 +159,22 @@ script, pass `resolve('dist')` or a `file:` URL.
 
 ## Routes
 
-A pattern is a path of pieces joined by `/`.
+A pattern is a path of pieces joined by `/`, written the way a server route is.
 
 | pattern | what it takes |
 | --- | --- |
 | `/about` | this path |
-| `/blog/[slug]` | one segment, into `params.slug` |
-| `/files/[...path]` | the whole tail, into `params.path` |
+| `/blog/:slug` | one segment, into `params.slug` |
+| `/files/:path{.+}` | the whole tail, into `params.path` |
+| `/files/*` | the same tail, into `params['*']` |
 
-A tail `[...name]` stands only last. There is no optional segment:
-`[[lang]]` is not a kit pattern. A capture name contains no brackets. A
-capture is decoded. The table is sorted so that a more exact pattern stands
-earlier: `/blog/new` wins over `/blog/[slug]`.
+A tail, `:name{.+}` or `*`, stands only last. `{.+}` is how a named tail is
+written, not a regexp, and another expression in the braces is refused.
+There is no optional segment: `:name?` is two routes. `[[lang]]` is not a
+kit pattern. It is the i18n package's marker, and `translated` takes it out
+before a route is built. A capture name is letters, digits and underscores.
+A capture is decoded. The table is sorted so that a more exact pattern stands
+earlier: `/blog/new` wins over `/blog/:slug`.
 
 The route identifier is its pattern. It lands in `ctx.routeId`.
 
@@ -186,7 +190,7 @@ export const home = page({
 })
 
 export const book = page({
-  pattern: '/book/[slug]',
+  pattern: '/book/:slug',
   load: (ctx) => F.resolve(data({ slug: ctx.params.slug })),
   head: (ctx) => ({ title: P.just(ctx.data.slug) }),
   view: (ctx) => H.article([H.h1([ctx.data.slug])]),
@@ -273,7 +277,7 @@ needs `paths`, or there is nothing to take addresses from.
 
 ```ts
 export const book = page({
-  pattern: '/book/[slug]',
+  pattern: '/book/:slug',
   static: true,
   paths: () => F.resolve([{ slug: 'hobbit' }, { slug: 'solaris' }]),
   load: (ctx) => F.resolve(data({ slug: ctx.params.slug })),
@@ -577,42 +581,62 @@ In the config `include` you name kit's islands, not your own:
 
 ## Styles
 
-`css` takes an object of rules. A key that names a class comes back already
-renamed, and that name goes on `class`. Put the object below the function
-that reads it. Property names are the CSS names in camel case, so the editor
-completes them, and a formatter formats the object. No CSS-in-JS plugin.
+A component names tokens. `tokens` is the table. `style` turns one declaration
+into shared classes: the same `padding: '4'` anywhere in the app is one rule.
+Put the calls below the function that reads them. The editor completes token
+names from the table. No CSS-in-JS plugin.
 
 ```ts
-import { css } from '@algosail/plykit'
+import { tokens } from '@algosail/plykit'
 import * as H from '@algosail/plydom/h'
 
 export const card = (title: string) =>
-  H.article({ class: theme.card }, [
-    H.h2({ class: theme.title }, [title]),
+  H.article({ class: cardClass }, [
+    H.h2({ class: titleClass }, [title]),
   ])
 
-const theme = css({
-  card: {
-    padding: '1rem',
-    selectors: {
-      '&:hover': { background: '#eee' },
-      '& > .title': { margin: 0 },
-    },
-    media: {
-      '(min-width: 40rem)': { padding: '2rem' },
+const { style, recipe } = tokens({
+  color: { text: '#2b2b2b', surface: '#fffdf8', accent: '#7a4b1e' },
+  space: { 0: '0', 2: '0.5rem', 4: '1rem', 8: '2rem' },
+  font: { serif: 'Georgia, serif' },
+  media: { md: '(min-width: 40rem)' },
+  keyframes: {
+    spin: {
+      from: { transform: 'rotate(0deg)' },
+      to: { transform: 'rotate(360deg)' },
     },
   },
-  title: { margin: 0 },
+})
+
+const cardClass = style({
+  padding: '4',
+  color: 'text',
+  fontFamily: 'serif',
+  hover: { background: 'surface' },
+  md: { padding: '8' },
+})
+
+const titleClass = style({ margin: '0' })
+
+const button = recipe({
+  base: { padding: '2', background: 'surface' },
+  variants: {
+    tone: {
+      quiet: { color: 'text' },
+      solid: { background: 'accent', color: 'surface' },
+    },
+  },
+  defaultVariants: { tone: 'quiet' },
 })
 ```
 
-A key of several names, `'menu, account'`, is one rule and two class names.
-A key that is not a class name is a selector as written: `':root'`, `'&body'`,
-`'.header a'`. The leading `&` is dropped. A word on its own, `body`, is the
-class `.body`.
+A value outside a scale is written in brackets: `width: '[100%]'`. `hover`,
+`focus`, `active`, and the keys of `media` are the only conditions, one level
+deep. `animationName` takes a key of `keyframes`. The class goes on the element
+it paints. Two elements that look the same share one `style` call.
 
-A template string still works. The editor will not offer CSS completions in
-it unless a plugin does.
+A template string still works for a selector the atoms do not express. The
+editor will not offer CSS completions in it unless a plugin does.
 
 ```ts
 const s = css`

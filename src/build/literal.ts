@@ -1,7 +1,12 @@
 import * as P from '@algosail/ply'
-import type { Node, Sheet } from '../document/style.ts'
 
-const skip = (source: string) => (at: number): number => {
+/** A static value a source literal can hold. */
+export type Literal =
+  | string
+  | number
+  | { readonly [key: string]: Literal }
+
+const skipSpace = (source: string) => (at: number): number => {
   let i = at
   while (i < source.length) {
     const c = source[i]
@@ -24,6 +29,9 @@ const skip = (source: string) => (at: number): number => {
   return i
 }
 
+/** Index past the whitespace and comments at `at`. */
+export const skip = skipSpace
+
 /** Index just after a quoted span, or `-1` when the span never closes. */
 const endOfQuote = (source: string) => (at: number): number => {
   const q = source[at]
@@ -41,7 +49,7 @@ const endOfQuote = (source: string) => (at: number): number => {
 }
 
 /** Index just after the `)` that closes the `(` at `open`, or `-1`. */
-const closeOf = (source: string) => (open: number): number => {
+export const endOfCall = (source: string) => (open: number): number => {
   let depth = 0
   let i = open
   while (i < source.length) {
@@ -79,11 +87,11 @@ const closeOf = (source: string) => (open: number): number => {
 }
 
 type Read =
-  | { readonly tag: 'keep'; readonly at: number; readonly value: Node }
+  | { readonly tag: 'keep'; readonly at: number; readonly value: Literal }
   | { readonly tag: 'drop'; readonly at: number }
   | { readonly tag: 'miss' }
 
-const keep = (at: number, value: Node): Read => ({ tag: 'keep', at, value })
+const keep = (at: number, value: Literal): Read => ({ tag: 'keep', at, value })
 const drop = (at: number): Read => ({ tag: 'drop', at })
 const miss: Read = { tag: 'miss' }
 
@@ -108,7 +116,6 @@ const hexAt = (source: string) => (at: number) => (size: number): P.Maybe<number
     : P.nothing ()
 }
 
-/** A quoted string, cooked the way JavaScript cooks it, or nothing when it is not static. */
 const readString = (source: string) => (at: number): Read => {
   const q = source[at]
   if (q !== '"' && q !== "'") return miss
@@ -153,7 +160,6 @@ const readString = (source: string) => (at: number): Read => {
   return miss
 }
 
-/** A template with no hole. A `${` that is not escaped makes the call a runtime one. */
 const readTemplate = (source: string) => (at: number): Read => {
   if (source[at] !== '`') return miss
   let i = at + 1
@@ -219,15 +225,21 @@ const readKey = (source: string) => (at: number): Read => {
   const c = source[at]
   if (c === '"' || c === "'") return readString (source) (at)
   if (c === '`') return readTemplate (source) (at)
+  if (c === '.' || (c !== undefined && c >= '0' && c <= '9')) {
+    const found = readNumber (source) (at)
+    return found.tag === 'keep' && typeof found.value === 'number'
+      ? keep (found.at, String (found.value))
+      : miss
+  }
   const found = IDENT.exec (source.slice (at))
   return found === null ? miss : keep (at + found[0].length, found[0])
 }
 
-const isText = (value: Node): value is string => typeof value === 'string'
+const isText = (value: Literal): value is string => typeof value === 'string'
 
 const readObject = (source: string) => (at: number): Read => {
   if (source[at] !== '{') return miss
-  const out: Record<string, Node> = {}
+  const out: Record<string, Literal> = {}
   let i = at + 1
   for (;;) {
     i = skip (source) (i)
@@ -249,46 +261,15 @@ const readObject = (source: string) => (at: number): Read => {
   }
 }
 
-const isSheet = (value: Node): value is Sheet =>
-  typeof value === 'object' && value !== null
-
-/** The object between the parentheses, when every value in it is static and nothing follows it. */
-const readSheet = (source: string) => (at: number): Read => {
-  const value = readValue (source) (at)
-  if (value.tag !== 'keep' || !isSheet (value.value)) return miss
-  const after = skip (source) (value.at)
-  return source[after] === ')' ? keep (after + 1, value.value) : miss
-}
-
-/** What `css(` holds: a static object, or the whole call left as written. */
-export type Argument =
-  | { readonly tag: 'sheet'; readonly end: number; readonly sheet: Sheet }
-  | { readonly tag: 'leave'; readonly end: number }
-
-const asSheet = (end: number) => (sheet: Sheet): Argument => ({
-  tag: 'sheet',
-  end,
-  sheet,
-})
-
-const asLeave = (end: number): Argument => ({ tag: 'leave', end })
-
 /**
- * The argument of `css(`, from the `(` at `open`.
- * A static object comes back as a sheet. Anything else comes back as the span to leave as written.
+ * The static value at `at`, cooked the way JavaScript cooks it.
+ * An identifier, a hole, or a computed key is a miss.
+ * An unquoted number key is kept as its string, so `{ 4: '1rem' }` is `{ '4': '1rem' }`.
  * @example
  * ```ts
- * // readArgument :: String -> Number -> Maybe Argument
- * readArgument ('css({ card: { padding: "1rem" } })', 3)
- * // => just ({ tag: 'sheet', end: 34, sheet: { card: { padding: '1rem' } } })
+ * readLiteral ('{ padding: "1rem" }', 0)
+ * // => { tag: 'keep', at: 19, value: { padding: '1rem' } }
  * ```
  */
-export const readArgument = (source: string) => (open: number): P.Maybe<Argument> => {
-  if (source[open] !== '(') return P.nothing ()
-  const end = closeOf (source) (open)
-  if (end < 0) return P.nothing ()
-  const read = readSheet (source) (open + 1)
-  return read.tag === 'keep' && isSheet (read.value) && read.at === end
-    ? P.just (asSheet (end) (read.value))
-    : P.just (asLeave (end))
-}
+export const readLiteral = (source: string) => (at: number): Read =>
+  readValue (source) (at)

@@ -262,15 +262,15 @@ const textOf = (params: Params): (seg: R.Segment) => P.Maybe<string> =>
  * @example
  * ```ts
  * // href :: String -> Params -> Maybe String
- * href ('/blog/[slug]') ({ slug: 'hello' })
+ * href ('/blog/:slug') ({ slug: 'hello' })
  * // => just('/blog/hello')
- * href ('/blog/[slug]') ({ slug: 'yes' })
+ * href ('/blog/:slug') ({ slug: 'yes' })
  * // => just('/blog/yes')
- * href ('/files/[...path]') ({ path: 'a/b' })
+ * href ('/files/:path{.+}') ({ path: 'a/b' })
  * // => just('/files/a/b')
- * href ('/blog/[slug]') ({})
+ * href ('/blog/:slug') ({})
  * // => nothing()
- * href ('/blog/[slug]') ({ slug: '' })
+ * href ('/blog/:slug') ({ slug: '' })
  * // => nothing()
  * ```
  */

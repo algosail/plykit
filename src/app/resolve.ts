@@ -243,7 +243,7 @@ const routeIdOf = <S, E>(hit: P.Maybe<Rt.Match<S, E>>): string =>
  * The context a route sees: the request, its state, and what the host passed along.
  * @example
  * ```ts
- * contextOf (request, state, arrival, { slug: 'hello' }, '/blog/[slug]')
+ * contextOf (request, state, arrival, { slug: 'hello' }, '/blog/:slug')
  * ```
  */
 export const contextOf = <S, E>(

@@ -190,7 +190,9 @@ export {
 export type { ServerNode } from './document/node.ts'
 
 export { collectBeyond, collectStyles, css, resetStyles, styleIds, styleSheet } from './document/css.ts'
-export type { Classes, Style } from './document/css.ts'
+export type { Classes } from './document/css.ts'
+export { tokens } from './document/tokens.ts'
+export type { Tokens } from './document/tokens.ts'
 
 export {
   hydrateIslands,

@@ -88,7 +88,7 @@ test ('kit/server — the head gets the same context as the view', async () => {
 test ('kit/server — the head sees both the captures and the state', async () => {
   const seen: string[] = []
   const spy: Route<State> = page ({
-    pattern: '/head/[slug]',
+    pattern: '/head/:slug',
     load: () => F.resolve (data ({})),
     head: (ctx) => {
       seen.push (
@@ -104,7 +104,7 @@ test ('kit/server — the head sees both the captures and the state', async () =
     new Request ('http://kit.test/head/one'),
   )
   assert.ok ((await res.text ()).includes ('<title>one</title>'))
-  assert.deepStrictEqual (seen, ['one /head/[slug] nobody'])
+  assert.deepStrictEqual (seen, ['one /head/:slug nobody'])
 })
 
 test ('kit/server — a page and a layout replace the fields they set', async () => {

@@ -45,28 +45,87 @@ const asRest = (name: string): Segment => ({ tag: 'rest', name })
 const asParam = (name: string): Segment => ({ tag: 'param', name })
 const asStatic = (value: string): Segment => ({ tag: 'static', value })
 
-const captureOf = (name: string): Segment =>
-  P.maybe_ (P.K (asParam (name))) (asRest) (P.stripPrefix ('...') (name))
+const isCapture: (seg: Segment) => boolean = segment ({
+  static: P.K (false),
+  param: P.K (true),
+  rest: P.K (true),
+})
 
-const bracketsOf = (raw: string): P.Maybe<string> =>
-  P.chain (P.stripSuffix (']')) (P.stripPrefix ('[') (raw))
+/** A named tail, written the way a server writes a capture that takes slashes. The braces are that spelling, not a regexp. */
+const TAIL = '{.+}'
+
+const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+const MARKER = /^\[\[[A-Za-z_][A-Za-z0-9_]*\]\]$/
+
+const OLD = /^\[[^\]]+\]$/
+
+const colonOf = (raw: string): P.Maybe<string> => P.stripPrefix (':') (raw)
+
+const captureOf = (body: string): Segment =>
+  P.maybe_ (P.K (asParam (body))) (asRest) (P.stripSuffix (TAIL) (body))
 
 const parseSegment = (raw: string): Segment =>
-  P.maybe_ (P.K (asStatic (raw))) (captureOf) (bracketsOf (raw))
+  raw === '*'
+    ? asRest ('*')
+    : P.maybe_ (P.K (asStatic (raw))) (captureOf) (colonOf (raw))
 
 const hasEarlyRest = (parsed: Pattern): boolean =>
   P.any (isRest) (P.fromMaybe<readonly Segment[]> ([]) (P.init (parsed)))
 
-const hasBrackets = (parsed: Pattern): boolean =>
-  P.any ((s: Segment) => /[[\]]/.test (nameOf (s))) (parsed)
+const staticIs = (re: RegExp): (seg: Segment) => boolean =>
+  segment ({
+    static: (one) => re.test (one.value),
+    param: P.K (false),
+    rest: P.K (false),
+  })
+
+const isMarked = staticIs (MARKER)
+
+const isOld = staticIs (OLD)
+
+const asksOptional = (seg: Segment): boolean =>
+  isCapture (seg) && nameOf (seg).endsWith ('?')
+
+const asksRegexp = (seg: Segment): boolean =>
+  isCapture (seg) && /[{}]/.test (nameOf (seg))
+
+const namedWell: (seg: Segment) => boolean = segment ({
+  static: P.K (true),
+  param: (one) => IDENT.test (one.name),
+  rest: (one) => IDENT.test (one.name) || one.name === '*',
+})
+
+const hasMarker = (parsed: Pattern): boolean => P.any (isMarked) (parsed)
+
+const hasOld = (parsed: Pattern): boolean => P.any (isOld) (parsed)
+
+const hasOptional = (parsed: Pattern): boolean => P.any (asksOptional) (parsed)
+
+const hasRegexp = (parsed: Pattern): boolean => P.any (asksRegexp) (parsed)
+
+const hasBadName = (parsed: Pattern): boolean =>
+  P.any ((seg: Segment) => !namedWell (seg)) (parsed)
+
+const whyMarker = (pattern: string): string =>
+  `route pattern ${pattern}: \`[[lang]]\` is not a capture. ` +
+  "kit has no optional segment; `[[lang]]` is the i18n package's marker, " +
+  'and `translated` takes it out before a route is built'
+
+const whyOld = (pattern: string): string =>
+  `route pattern ${pattern}: a capture is \`:name\`, a tail is \`:name{.+}\` or \`*\``
+
+const whyOptional = (pattern: string): string =>
+  `route pattern ${pattern}: kit has no optional segment. \`:name?\` is two routes`
+
+const whyRegexp = (pattern: string): string =>
+  `route pattern ${pattern}: a tail is \`:name{.+}\` or \`*\`. kit has no regexp segment`
 
 const whyEarlyRest = (pattern: string): string =>
   `route pattern ${pattern}: a rest segment must come last`
 
-const whyBrackets = (pattern: string): string =>
-  `route pattern ${pattern}: a capture's name cannot hold brackets. ` +
-  "kit has no optional segment; `[[lang]]` is the i18n package's marker, " +
-  'and `translated` takes it out before a route is built'
+const whyName = (pattern: string): string =>
+  `route pattern ${pattern}: a capture's name is letters, digits and underscores`
 
 /** What a pattern can be wrong about, and what to say when it is. */
 type Complaint = readonly [
@@ -75,8 +134,12 @@ type Complaint = readonly [
 ]
 
 const complaints: readonly Complaint[] = [
+  [hasMarker, whyMarker],
+  [hasOld, whyOld],
+  [hasOptional, whyOptional],
+  [hasRegexp, whyRegexp],
   [hasEarlyRest, whyEarlyRest],
-  [hasBrackets, whyBrackets],
+  [hasBadName, whyName],
 ]
 
 const complaintOf = (pattern: string) => (parsed: Pattern): P.Maybe<string> =>
@@ -96,25 +159,19 @@ const checked = (pattern: string) => (parsed: Pattern): Pattern =>
  * @example
  * ```ts
  * // parsePattern :: String -> Pattern
- * parsePattern ('/blog/[slug]')
+ * parsePattern ('/blog/:slug')
  * // => [{ tag: 'static', value: 'blog' }, { tag: 'param', name: 'slug' }]
  * ```
  */
 export const parsePattern = (pattern: string): Pattern =>
   checked (pattern) (P.map (parseSegment) (segmentsOf (pattern)))
 
-const isCapture: (seg: Segment) => boolean = segment ({
-  static: P.K (false),
-  param: P.K (true),
-  rest: P.K (true),
-})
-
 /**
  * Whether a pattern captures anything.
  * @example
  * ```ts
  * // hasCaptures :: String -> Boolean
- * hasCaptures ('/blog/[slug]') // => true
+ * hasCaptures ('/blog/:slug') // => true
  * hasCaptures ('/about') // => false
  * ```
  */
@@ -217,11 +274,11 @@ const paramsOf = (all: Caught): Params => P.fromPairs (all)
  * @example
  * ```ts
  * // match :: Pattern -> String -> Maybe Params
- * match (parsePattern ('/blog/[slug]')) ('/blog/hello')
+ * match (parsePattern ('/blog/:slug')) ('/blog/hello')
  * // => just({ slug: 'hello' })
- * match (parsePattern ('/blog/[slug]')) ('/blog/yes')
+ * match (parsePattern ('/blog/:slug')) ('/blog/yes')
  * // => just({ slug: 'yes' })
- * match (parsePattern ('/blog/[slug]')) ('/blog')
+ * match (parsePattern ('/blog/:slug')) ('/blog')
  * // => nothing()
  * ```
  */
@@ -259,7 +316,7 @@ const precisionAt = (p: Pattern) => (i: number): number =>
  * @example
  * ```ts
  * // compare :: Pattern -> Pattern -> Ordering
- * compare (parsePattern ('/blog/new')) (parsePattern ('/blog/[slug]'))
+ * compare (parsePattern ('/blog/new')) (parsePattern ('/blog/:slug'))
  * // => lt   — the literal sorts first
  * ```
  */

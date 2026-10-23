@@ -1,9 +1,7 @@
 import * as P from '@algosail/ply'
 import type { Classes, Compiled } from '../document/css.ts'
-import type { Sheet } from '../document/style.ts'
-import type { Argument } from './object.ts'
-import { compile, compiledSheet } from '../document/css.ts'
-import { readArgument } from './object.ts'
+import { compile } from '../document/css.ts'
+import { endOfCall } from './literal.ts'
 
 const CALL = /(?<![\w$.])css\s*(`|\()/
 
@@ -61,15 +59,9 @@ const markIn = (source: string): P.Maybe<Mark> => {
 const tickFrom = (source: string) => (at: number): P.Maybe<number> =>
   P.fromPredicate (isThere) (source.indexOf ('`', at))
 
-/** A `css` call the scanner can see: a template, a static object, or a call left as written. */
+/** A `css` call the scanner can see: a template, or a call left as written. */
 type Spot =
   | { readonly tag: 'literal'; readonly at: number; readonly literal: Literal }
-  | {
-    readonly tag: 'sheet'
-    readonly at: number
-    readonly end: number
-    readonly sheet: Sheet
-  }
   | { readonly tag: 'leave'; readonly at: number; readonly end: number }
 
 const literalNear = (source: string): (at: number) => P.Maybe<Literal> =>
@@ -84,25 +76,13 @@ const asLiteralSpot = (at: number) => (literal: Literal): Spot => ({
 const spotFromLiteral = (source: string) => (mark: Mark): P.Maybe<Spot> =>
   P.map (asLiteralSpot (mark.at)) (literalNear (source) (mark.at))
 
-const asSheet = (at: number) => (end: number) => (sheet: Sheet): Spot => ({
-  tag: 'sheet',
-  at,
-  end,
-  sheet,
-})
-
 const asLeave = (at: number) => (end: number): Spot => ({ tag: 'leave', at, end })
-
-const asRead = (at: number) => (read: Argument): Spot =>
-  read.tag === 'sheet'
-    ? asSheet (at) (read.end) (read.sheet)
-    : asLeave (at) (read.end)
 
 const spotFromCall = (source: string) => (mark: Mark): P.Maybe<Spot> => {
   const open = source.indexOf ('(', mark.at)
-  return open < 0
-    ? P.nothing ()
-    : P.map (asRead (mark.at)) (readArgument (source) (open))
+  if (open < 0) return P.nothing ()
+  const end = endOfCall (source) (open)
+  return end < 0 ? P.nothing () : P.just (asLeave (mark.at) (end))
 }
 
 const spotFrom = (source: string) => (mark: Mark): P.Maybe<Spot> =>
@@ -131,13 +111,6 @@ const knownIn = (
     P.filter (isKnown (known)),
     P.map (classesOf),
   ])
-
-const knownSheet = (known: ReadonlySet<string>) => (sheet: Sheet): P.Maybe<Classes> => {
-  const settled = compiledSheet (sheet)
-  return known.has (settled.block.id)
-    ? P.just (settled.classes)
-    : P.nothing ()
-}
 
 /** A piece of the answer, and whether anything in it was replaced. */
 type Rewrite = {
@@ -175,9 +148,7 @@ const afterIn = (source: string) => (one: Spot): string =>
 const saidFor =
   (known: ReadonlySet<string>) => (source: string) => (one: Spot): Rewrite => {
     if (one.tag === 'leave') return verbatim (source) (one)
-    return one.tag === 'literal'
-      ? P.maybe_ (() => verbatim (source) (one)) (asClasses) (knownIn (known) (one.literal))
-      : P.maybe_ (() => verbatim (source) (one)) (asClasses) (knownSheet (known) (one.sheet))
+    return P.maybe_ (() => verbatim (source) (one)) (asClasses) (knownIn (known) (one.literal))
   }
 
 const scanning = (known: ReadonlySet<string>) => (source: string): Rewrite =>

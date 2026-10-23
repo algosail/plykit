@@ -12,7 +12,7 @@ import { listing } from '../ui/listing.ts'
 import { link } from '../ui/text.ts'
 
 /** The pattern is named once, here, and exported — so a link to a shelf is built from the same string the router finds it by, and escaping stays the work of `href`, not of the caller. */
-const PATTERN = '/shelf/[slug]'
+const PATTERN = '/shelf/:slug'
 export const href = routeHref (PATTERN)
 
 type Read = { readonly shelf: Shelf; readonly books: readonly Book[] }

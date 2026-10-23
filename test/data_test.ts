@@ -27,7 +27,7 @@ const posts = [{ id: 'first', title: 'First' }, {
  * Reads "slowly" and counts how many times it was called.
  */
 const post: Route<Who> = page<{ title: string }, Who> ({
-  pattern: '/blog/[slug]',
+  pattern: '/blog/:slug',
   static: true,
   paths: () => F.resolve (P.map ((p: { id: string }) => ({ slug: p.id })) (posts)),
   load: (ctx) => {
@@ -59,7 +59,7 @@ test ('kit/data — prepare reads by address, once for each paths', async () => 
 
   assert.deepStrictEqual (Object.keys (ready.data).sort (), ['/blog/first', '/blog/second'])
   assert.deepStrictEqual (ready.data['/blog/second'], { title: 'Second' })
-  assert.deepStrictEqual (ready.routes, ['/blog/[slug]'])
+  assert.deepStrictEqual (ready.routes, ['/blog/:slug'])
   assert.deepStrictEqual (ready.refused, [])
   assert.deepStrictEqual (reads, 2)
 })

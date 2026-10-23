@@ -20,7 +20,7 @@ const field = (name: string) => (body: Json): P.Maybe<string> =>
   P.chain (jsonText) (jsonField (name) (body))
 
 export const notes: Route = endpoint ({
-  pattern: '/api/books/[slug]/notes',
+  pattern: '/api/books/:slug/notes',
   on: {
     GET: (ctx) => P.map (json) (Notes.under (ctx.params.slug)),
     POST: (ctx) => P.chain ((body: Json) => {

@@ -43,7 +43,7 @@ const about = plain ('/about', 'About us')
  * A live route with a capture, which still knows its addresses.
  */
 const post: Route = page ({
-  pattern: '/blog/[slug]',
+  pattern: '/blog/:slug',
   paths: () => F.resolve (P.map ((p: { id: string }) => ({ slug: p.id })) (posts)),
   load: (ctx) =>
     F.resolve (data ({
@@ -57,7 +57,7 @@ const post: Route = page ({
  * A capture without paths — there is nothing to name its addresses with.
  */
 const anon: Route = page ({
-  pattern: '/u/[name]',
+  pattern: '/u/:name',
   head: () => ({ title: P.just ('someone') }),
   view: (ctx) => H.h1 ([ctx.params.name]),
 })

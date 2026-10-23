@@ -41,7 +41,7 @@ const shell = layout<Record<string, never>, Visitor> ({ view: chrome })
 
 const whom: readonly Route<Visitor>[] = shell ([
   page ({
-    pattern: '/who/[id]',
+    pattern: '/who/:id',
     load: (ctx) => {
       note ('load') (`${ctx.state.who} ${ctx.params.id} ${ctx.routeId}`)
       return F.resolve (data ({ id: ctx.params.id }))
@@ -79,7 +79,7 @@ test ('kit/context — load, view, and the layout read the same context', async 
   assert.ok ((html).includes ('seven for anya'))
   assert.ok ((html).includes ('who: anya'))
   assert.deepStrictEqual (seen, [
-    'load: anya seven /who/[id]',
+    'load: anya seven /who/:id',
     'view: anya seven /who/seven',
   ])
   assert.deepStrictEqual (built, 1)

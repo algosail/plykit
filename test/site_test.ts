@@ -45,7 +45,7 @@ const home: Route = page ({
 })
 
 const post: Route = page ({
-  pattern: '/blog/[slug]',
+  pattern: '/blog/:slug',
   static: true,
   paths: () => F.resolve (P.map ((p: Post): Params => ({ slug: p.id })) (posts)),
   load: (ctx) =>
@@ -219,7 +219,7 @@ test ('kit/site — a build weighs not only the sheet, but the scripts', () =>
 test ('kit/site — captures without paths are an error, not silence', () =>
   inDirs (async ({ out, outDir }) => {
     const broken = page ({
-      pattern: '/blog/[slug]',
+      pattern: '/blog/:slug',
       static: true,
       head: () => ({ title: P.just ('x') }),
       view: () => H.h1 (['x']),
@@ -234,7 +234,7 @@ test ('kit/site — captures without paths are an error, not silence', () =>
 test ('kit/site — paths for the wrong capture is an error', () =>
   inDirs (async ({ out, outDir }) => {
     const wrong = page ({
-      pattern: '/blog/[slug]',
+      pattern: '/blog/:slug',
       static: true,
       paths: () => F.resolve ([{ id: 'first' }] as readonly Params[]),
       head: () => ({ title: P.just ('x') }),

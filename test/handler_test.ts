@@ -179,7 +179,7 @@ const escaped = '/note/one'
 
 const noteRoutes: readonly Route[] = shell ([
   page<Record<string, never>> ({
-    pattern: '/note/[slug]',
+    pattern: '/note/:slug',
     load: () => F.resolve (data ({})),
     view: (ctx) => H.p ([`note ${ctx.params.slug}`]),
     on: {
@@ -229,7 +229,7 @@ test ('kit/server — a method the page does not have is a 405', async () => {
   assert.deepStrictEqual (res.status, 405)
   assert.deepStrictEqual (res.headers.get ('allow'), 'DELETE, GET, HEAD, POST')
   assert.deepStrictEqual (res.headers.get ('content-type'), 'text/html; charset=utf-8')
-  assert.ok ((await res.text ()).includes ('PUT not allowed at /note/[slug]'))
+  assert.ok ((await res.text ()).includes ('PUT not allowed at /note/:slug'))
 })
 
 test ('kit/server — what a handler threw becomes a 500 and does not escape', async () => {
@@ -265,7 +265,7 @@ test ('kit/server — a GET handler on a page answers instead of the view', asyn
 const things = handler ({
   routes: [
     endpoint ({
-      pattern: '/api/things/[id]',
+      pattern: '/api/things/:id',
       on: {
         GET: (event) => F.resolve (json ({ id: event.params.id })),
         PUT: () => F.resolve (empty ()),
@@ -303,7 +303,7 @@ test ('kit/server — an endpoint\'s 405 names what it can do', async () => {
   assert.deepStrictEqual (res.status, 405)
   assert.deepStrictEqual (res.headers.get ('allow'), 'GET, POST, PUT')
   assert.deepStrictEqual (await res.json (), {
-    error: 'DELETE not allowed at /api/things/[id]',
+    error: 'DELETE not allowed at /api/things/:id',
   })
 })
 

@@ -1,8 +1,10 @@
 import * as P from '@algosail/ply'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { replaceAtoms } from '../src/build/atom.ts'
 import { absolute, replaceBlocks } from '../src/build/extract.ts'
 import { compile, css, resetStyles, styleIds } from '../src/document/css.ts'
+import { tokens } from '../src/document/tokens.ts'
 
 const block = (raw: string) => compile (raw)
 
@@ -73,62 +75,87 @@ test ('kit/extract — an escaped apostrophe inside a block', () => {
   assert.deepStrictEqual (said (out), `const s = ${JSON.stringify (one.classes)}`)
 })
 
-test ('kit/extract — a static object is the same block the call registers', () => {
+test ('kit/extract — a static style call is the same string the call returns', () => {
   resetStyles ()
-  const theme = css ({
-    card: {
-      padding: '1rem',
-      selectors: { '&:hover': { background: '#eee' } },
-    },
-    'menu, account': { display: 'flex' },
+  const { style } = tokens ({
+    space: { 4: '1rem' },
+    color: { text: '#111' },
   })
+  const card = style ({ padding: '4', color: 'text' })
   const source = [
-    'export const theme = css({',
-    '  // the card',
-    '  card: {',
-    "    padding: '1rem',",
-    "    selectors: { '&:hover': { background: '#eee' } },",
-    '  },',
-    "  'menu, account': { display: 'flex' },",
+    'const { style } = tokens({',
+    '  space: { 4: \'1rem\' },',
+    '  color: { text: \'#111\' },',
+    '})',
+    'const card = style({ padding: \'4\', color: \'text\' })',
+  ].join ('\n')
+  const out = replaceAtoms (source, new Set (styleIds ()), new Map ())
+  assert.ok (said (out).includes (`const card = ${JSON.stringify (card)}`))
+  assert.equal (said (out).includes ('style({'), false)
+  resetStyles ()
+})
+
+test ('kit/extract — a style imported from the token module', () => {
+  resetStyles ()
+  const { style } = tokens ({ space: { 4: '1rem' } })
+  const card = style ({ padding: '4' })
+  const theme = [
+    'export const { style } = tokens({',
+    '  space: { 4: \'1rem\' },',
     '})',
   ].join ('\n')
-
-  const out = replaceBlocks (source, new Set (styleIds ()))
-  assert.deepStrictEqual (said (out), `export const theme = ${JSON.stringify (theme)}`)
-  resetStyles ()
-})
-
-test ('kit/extract — a brace or an escape inside a string stays part of the value', () => {
-  resetStyles ()
-  const theme = css ({ card: { content: 'a { b }\n' } })
-  const source = "const theme = css({ card: { content: 'a { b }\\n' } })"
-  const out = replaceBlocks (source, new Set (styleIds ()))
-  assert.deepStrictEqual (said (out), `const theme = ${JSON.stringify (theme)}`)
-  resetStyles ()
-})
-
-test ('kit/extract — an object that names a value is left for runtime', () => {
-  const source = 'const s = css({ card: { color: accent } })'
-  assert.deepStrictEqual (
-    replaceBlocks (source, new Set (['anything'])),
-    P.nothing (),
-  )
-})
-
-test ('kit/extract — a template and an object in one file', () => {
-  resetStyles ()
-  const fromTemplate = css`.a { color: red }`
-  const fromObject = css ({ b: { color: 'blue' } })
   const source = [
-    'const a = css`.a { color: red }`',
-    "const b = css({ b: { color: 'blue' } })",
+    'import { style } from \'./theme.ts\'',
+    'const card = style({ padding: \'4\' })',
   ].join ('\n')
+  const out = replaceAtoms (source, new Set (styleIds ()), new Map ([['./theme.ts', theme]]))
+  assert.ok (said (out).includes (`const card = ${JSON.stringify (card)}`))
+  resetStyles ()
+})
 
-  const out = said (replaceBlocks (source, new Set (styleIds ())))
-  assert.ok (out.includes (JSON.stringify (fromTemplate)))
-  assert.ok (out.includes (JSON.stringify (fromObject)))
-  assert.equal (out.includes ('css`'), false)
-  assert.equal (out.includes ('css('), false)
+test ('kit/extract — a value that is not static stays a call', () => {
+  const source = [
+    'const { style } = tokens({ space: { 4: \'1rem\' } })',
+    'const card = style({ padding: n })',
+  ].join ('\n')
+  assert.deepStrictEqual (replaceAtoms (source, new Set (['anything']), new Map ()), P.nothing ())
+})
+
+test ('kit/extract — a static recipe pick is the string the call returns', () => {
+  resetStyles ()
+  const { recipe } = tokens ({
+    color: { text: '#111', surface: '#fff' },
+    space: { 4: '1rem' },
+  })
+  const button = recipe ({
+    base: { padding: '4' },
+    variants: {
+      tone: {
+        quiet: { color: 'text' },
+        solid: { background: 'surface' },
+      },
+    },
+  })
+  const worn = button ({ tone: 'solid' })
+  const source = [
+    'const { recipe } = tokens({',
+    '  color: { text: \'#111\', surface: \'#fff\' },',
+    '  space: { 4: \'1rem\' },',
+    '})',
+    'const button = recipe({',
+    '  base: { padding: \'4\' },',
+    '  variants: {',
+    '    tone: {',
+    '      quiet: { color: \'text\' },',
+    '      solid: { background: \'surface\' },',
+    '    },',
+    '  },',
+    '})',
+    'const worn = button({ tone: \'solid\' })',
+  ].join ('\n')
+  const out = said (replaceAtoms (source, new Set (styleIds ()), new Map ()))
+  assert.ok (out.includes (`const worn = ${JSON.stringify (worn)}`))
+  assert.ok (out.includes ('const button = recipe({'))
   resetStyles ()
 })
 

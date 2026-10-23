@@ -1,6 +1,7 @@
 import * as P from '@algosail/ply'
 import * as F from '@algosail/plyfuture'
 import * as esbuild from 'esbuild'
+import { pathToFileURL } from 'node:url'
 import type { Prepared } from '../app/data.ts'
 import type { Routes } from '../app/types.ts'
 import type { DirEntry } from '../fs/disk.ts'
@@ -21,6 +22,7 @@ import {
 } from '../fs/disk.ts'
 import { declared } from '../islands/island.ts'
 import { aliasPlugin } from './alias.ts'
+import { replaceAtoms } from './atom.ts'
 import { replaceBlocks } from './extract.ts'
 
 const refuse = (said: string): never => {
@@ -526,15 +528,40 @@ const clientGraph = (): esbuild.Plugin => ({
   },
 })
 
+const FROM = /from\s*(['"])(\.[^'"]*)\1/g
+
+const importedSources = async (
+  file: string,
+  source: string,
+): Promise<Map<string, string>> => {
+  const out = new Map<string, string> ()
+  for (const match of source.matchAll (FROM)) {
+    const spec = match[2]
+    if (spec === undefined || out.has (spec)) continue
+    try {
+      out.set (spec, await readText (new URL (spec, pathToFileURL (file))))
+    } catch {
+      // a missing relative import is not a token table
+    }
+  }
+  return out
+}
+
 const stylePlugin = (known: ReadonlySet<string>): esbuild.Plugin => ({
   name: 'kit-styles',
   setup(build) {
     build.onLoad ({ filter: /\.ts$/ }, async (args) => {
       if (known.size === 0) return null
       const source = await readText (args.path)
-      return P.maybe_<esbuild.OnLoadResult | null> (P.K (null)) (
-        (contents: string) => ({ contents, loader: 'ts' }),
-      ) (replaceBlocks (source, known))
+      const blocks = replaceBlocks (source, known)
+      const body = blocks.tag === 'just' ? blocks.value : source
+      const atoms = replaceAtoms (body, known, await importedSources (args.path, body))
+      const contents = atoms.tag === 'just'
+        ? atoms.value
+        : blocks.tag === 'just'
+          ? blocks.value
+          : undefined
+      return contents === undefined ? null : { contents, loader: 'ts' as const }
     })
   },
 })
