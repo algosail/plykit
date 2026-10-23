@@ -48,7 +48,7 @@ export const routes: Routes<State> = [
   robots<State> ({ sitemap: `${ORIGIN}/sitemap.xml` }),
 ]
 
-/** Links every page carries. A page's own tags follow these. */
+/** Default links. A page or a layout that sets `link` replaces them. */
 export const head: DocumentHead = {
   link: [
     { rel: 'icon', href: '/static/lamp.svg' },

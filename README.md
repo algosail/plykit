@@ -97,7 +97,7 @@ it is needed.
 | `ahead` | replies that one `Request` is enough for. The first to say a reply wins |
 | `lang` | the document language, a string or a function of the context |
 | `dir` | `ltr`, `rtl`, `auto`, or a function that may return `undefined` |
-| `head` | the document head. `title` places the page title. `meta` and `link` are on every page |
+| `head` | the default document head. A layout or a page replaces any field it sets |
 | `error` | failure markup. The status and the message by default |
 | `onHazard` | `(hazards, url) => void`. Markup the parser will rewrite, an island with no chunk, an action into an empty region |
 | `styles` | `(markup) => string`, ready `<style>` tags |
@@ -110,12 +110,11 @@ it is needed.
 | `minify` | compress chunks. `wrangler dev` leaves them readable |
 | `prebuilt` | answer a static page from `kit-data.json`. The worker reads `record.json`, and `wrangler dev` leaves that data empty |
 
-`head` belongs to the application. A page fills `title` and adds its own `meta` and `link` after the application's. With no `title` function, the page title is the document title. A page that sets no title leaves whatever `title` returns for `P.nothing()`. With no application `head`, the page's head is the document head.
+`head` is the default document head. A layout replaces any field it sets, for the routes it wraps. A page replaces any field it sets, after the layouts. A field that is omitted stays, so the innermost value wins. `title` is a `P.Maybe<string>`. `P.nothing()` and an empty `meta` or `link` list are values, and they replace what is outside. Kit's own stylesheet is added after this, so a page that replaces `link` still gets it.
 
 ```ts
 head: {
-  title: (page) =>
-    P.maybe_(() => P.just('Room'))((name) => P.just(`${name} · Room`))(page),
+  title: P.just('Room'),
   link: [{ rel: 'stylesheet', href: '/static/styles.css' }],
 }
 ```
@@ -208,7 +207,9 @@ export const routes = [...frame([home, book]), create]
 ```
 
 A page title is a `P.Maybe<string>` from `@algosail/ply`. An empty title is
-`P.nothing()`. `meta` and `link` are lists of attributes of the matching tags.
+`P.nothing()`, and that empty title replaces the one outside it. `meta` and
+`link` are lists of attributes of the matching tags. Setting a list replaces
+the list outside it. Omitting the field keeps it.
 
 `page(spec)` builds a page.
 
@@ -217,7 +218,7 @@ A page title is a `P.Maybe<string>` from `@algosail/ply`. An empty title is
 | `pattern` | the pattern |
 | `view` | `(ctx) => View`. The context already has `data` |
 | `load` | `(ctx) => Future<Loaded>`. No function means data `{}` and status 200 |
-| `head` | `(ctx) => { title, meta?, link? }`, added to the application's head |
+| `head` | `(ctx) => { title?, meta?, link? }`. A field it sets replaces the layout's, then the application's |
 | `on` | handlers for methods that do not draw the page |
 | `static` | the page can be written as a file |
 | `paths` | `() => Future<Params[]>`, addresses for a pattern with captures |
@@ -239,8 +240,10 @@ draw.
 
 `layout(spec)` returns a function. It takes routes and wraps pages. A layout
 does not touch an endpoint. A layout `view` has `ctx.slot` — the page already
-drawn — and `ctx.data` of what the layout `load` read. Nesting is read from
-the outside in:
+drawn — and `ctx.data` of what the layout `load` read. A layout `head` sees
+that same data and replaces fields for the routes it wraps. An inner layout
+replaces an outer one, and a page replaces both. Nesting is read from the
+outside in:
 
 ```ts
 const site = layout({ view: (ctx) => H.div([nav, H.main([ctx.slot])]) })

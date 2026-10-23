@@ -14,6 +14,7 @@ import type {
   ErrorView,
   Failed,
   Head,
+  HeadPatch,
   Json,
   Middleware,
   Reply,
@@ -61,8 +62,10 @@ export type Options<S = unknown, E = unknown> = Prepare<S> & {
   readonly through?: readonly Middleware<S, E>[]
   /** Answers that need nothing but the request: each is handed one and says a reply or says nothing. */
   readonly ahead?: readonly Ahead[]
-  /** The document head. A page's `head` fills `title` and adds its `meta` and `link` after these. */
+  /** Default document head. A layout or a page replaces any field it sets. */
   readonly head?: DocumentHead
+  /** Kit's stylesheet. Prepended after the head is settled, so a replaced `link` list keeps it. */
+  readonly styleLink?: Readonly<P.StrMap<string>>
   /** Told about markup that will not do what it looks like it does: a construct a parser rewrites, an island that was placed but never built, an action aimed at a region with nothing on the page to intercept it. */
   readonly onHazard?: (hazards: readonly Html.Hazard[], url: URL) => void
   /** Module scripts every document carries, whatever its markup — for a chunk that starts itself and has no marker to be found by. */
@@ -266,6 +269,7 @@ type Serving<S, E> = {
   readonly styles: (markup: string) => string
   readonly scripts: (markup: string) => readonly string[]
   readonly drawError: ErrorView<S, E>
+  readonly root: Head
   readonly dress: (head: Head) => Head
   readonly state: (request: Request) => F.Future<unknown, S>
   readonly inert: (markup: string, whole: boolean) => readonly Html.Hazard[]
@@ -310,21 +314,32 @@ const aiming = <S, E>(one: Asking<S, E>) => (state: S): Aiming<S, E> => ({
   aimed: Resolve.aim (one.app.table) (state) (one.request, one.from),
 })
 
-const kept: (page: P.Maybe<string>) => P.Maybe<string> = P.I
-
 const tagsOf = <A>(tags: readonly A[] | undefined): readonly A[] =>
   P.defaultTo<readonly A[]> ([]) (tags)
 
-/** The page title fills the application's title. The page's tags follow. */
+/** A set field replaces the one outside it. An omitted field stays, and `P.nothing()` counts as set. */
+const over = (base: Head) => (patch: HeadPatch | undefined): Head =>
+  patch === undefined
+    ? base
+    : {
+        title: patch.title !== undefined ? patch.title : base.title,
+        meta: patch.meta !== undefined ? patch.meta : base.meta,
+        link: patch.link !== undefined ? patch.link : base.link,
+      }
+
+/** The application's head. An omitted title is an empty one. */
+const rootOf = (doc: DocumentHead | undefined): Head => ({
+  title: doc?.title ?? P.nothing (),
+  meta: doc?.meta,
+  link: doc?.link,
+})
+
+/** Kit's stylesheet leads whatever links the page settled on. */
 const dressOf =
-  (root: DocumentHead | undefined) => (page: Head): Head =>
-    root === undefined
-      ? page
-      : {
-          title: (root.title ?? kept) (page.title),
-          meta: P.concat (tagsOf (root.meta)) (tagsOf (page.meta)),
-          link: P.concat (tagsOf (root.link)) (tagsOf (page.link)),
-        }
+  (styleLink: Readonly<P.StrMap<string>> | undefined) => (head: Head): Head =>
+    styleLink === undefined
+      ? head
+      : { ...head, link: P.prepend (styleLink) (tagsOf (head.link)) }
 
 const servingOf = <S, E>(options: Options<S, E>): Serving<S, E> => ({
   table: Rt.table (options.routes),
@@ -335,7 +350,8 @@ const servingOf = <S, E>(options: Options<S, E>): Serving<S, E> => ({
   styles: P.defaultTo (collectStyles) (options.styles),
   scripts: islandScripts (P.defaultTo<Manifest> ({}) (options.chunks)),
   drawError: P.defaultTo<ErrorView<S, E>> (plainly) (options.error),
-  dress: dressOf (options.head),
+  root: rootOf (options.head),
+  dress: dressOf (options.styleLink),
   state: P.defaultTo (noState<S, E>) (declaredIn (options)),
   inert: inertMarkup (P.defaultTo<Manifest> ({}) (options.chunks)),
   told: P.defaultTo (nothingTold) (options.onHazard),
@@ -389,14 +405,29 @@ const telling =
       },
     ) (said)
 
-const headFor = <S, E>(resolved: Resolve.Resolved<S, E>): Head =>
-  resolved.route.head ({ ...resolved.ctx, data: resolved.data })
+const layoutHead =
+  <S, E>(resolved: Resolve.Resolved<S, E>) => (head: Head, index: number): Head =>
+    over (head) (
+      resolved.route.layouts[index].head?. ({
+        ...resolved.ctx,
+        data: P.defaultTo<Json> ({}) (resolved.layoutData[index]),
+      }),
+    )
+
+/** The root, then each layout from the outside in, then the page. */
+const headFor =
+  <S, E>(at: Serving<S, E>) => (resolved: Resolve.Resolved<S, E>): Head =>
+    over (
+      P.reduce (layoutHead (resolved)) (at.root) (
+        P.range (0) (resolved.route.layouts.length),
+      ),
+    ) (resolved.route.head?. ({ ...resolved.ctx, data: resolved.data }))
 
 const asDocument =
   <S, E>(at: Serving<S, E>) =>
   (resolved: Resolve.Resolved<S, E>) =>
   (picked: Picked): Reply =>
-    document (at) (resolved.ctx) (headFor (resolved)) (picked) (resolved.status)
+    document (at) (resolved.ctx) (headFor (at) (resolved)) (picked) (resolved.status)
 
 const asFragment =
   <S, E>(at: Serving<S, E>) =>
@@ -417,10 +448,9 @@ const drawn = <S, E>(at: Serving<S, E>) => (resolved: Resolve.Resolved<S, E>): R
 const apology =
   <S, E>(at: Serving<S, E>) => (ctx: Context<S, E>) => (refusal: Failed): Reply =>
     Rp.onto (refusal) (
-      document (at) (ctx) ({
-        title: P.just (String (refusal.error.status)),
-        meta: [],
-      }) (toMarkup (at.drawError ({ ...ctx, error: refusal.error }))) (
+      document (at) (ctx) (
+        over (at.root) ({ title: P.just (String (refusal.error.status)) }),
+      ) (toMarkup (at.drawError ({ ...ctx, error: refusal.error }))) (
         refusal.error.status,
       ),
     )
@@ -447,9 +477,9 @@ const bareContext = <S, E>(one: Asking<S, E>): Context<S, E> =>
 const unprepared = <S, E>(one: Asking<S, E>) => (err: unknown): Reply => {
   const bare = bareContext (one)
   const error = new HttpError (500, messageOf (err))
-  return document (one.app) (bare) ({ title: P.just ('500'), meta: [] }) (
-    toMarkup (plainly ({ ...bare, error })),
-  ) (500)
+  return document (one.app) (bare) (
+    over (one.app.root) ({ title: P.just ('500') }),
+  ) (toMarkup (plainly ({ ...bare, error }))) (500)
 }
 
 const answered = <S, E>(app: Serving<S, E>) => (outcome: Resolve.Outcome<S, E>): Reply =>

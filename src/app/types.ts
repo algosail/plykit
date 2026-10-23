@@ -171,36 +171,35 @@ export type Head = {
 }
 
 /**
- * The document head an application holds. A page fills `title` and adds tags after these.
+ * Fields of a document head. A set field replaces the one outside it.
  * @example
  * ```ts
- * // title :: Maybe String -> Maybe String
- * const head: DocumentHead = {
- *   title: (page) => P.maybe_ (() => P.just ('Room')) (
- *     (name: string) => P.just (`${name} · Room`),
- *   ) (page),
+ * const head: HeadPatch = {
+ *   title: P.just ('Room'),
  *   link: [{ rel: 'stylesheet', href: '/static/styles.css' }],
  * }
  * ```
  */
-export type DocumentHead = {
-  /** Where the page title sits. Omitted, the page title is the document title. */
-  readonly title?: (page: P.Maybe<string>) => P.Maybe<string>
-  /** `<meta>` tags on every page. A page's own follow these. */
+export type HeadPatch = {
+  readonly title?: P.Maybe<string>
+  /** `<meta>` tags. */
   readonly meta?: readonly Readonly<P.StrMap<string>>[]
-  /** `<link>` tags on every page. A page's own follow these. */
+  /** `<link>` tags, attribute by attribute. */
   readonly link?: readonly Readonly<P.StrMap<string>>[]
 }
+
+/** The document head an application holds. A layout or a page replaces any field it sets. */
+export type DocumentHead = HeadPatch
 
 /** What a route renders, given what its load produced. */
 export type PageView<D extends Json, S = unknown, E = unknown> = (
   ctx: Context<S, E> & { readonly data: D },
 ) => D.View
 
-/** What a page adds to the document head, given the same context its view gets. Its title fills the application's title. Its tags follow the application's. With no application head, this is the document head. */
+/** What a page replaces in the document head, given the same context its view gets. A field it sets replaces the layout's, then the application's. A field it omits stays. */
 export type PageHead<D extends Json, S = unknown, E = unknown> = (
   ctx: Context<S, E> & { readonly data: D },
-) => Head
+) => HeadPatch
 
 /** What a failure renders. */
 export type ErrorView<S = unknown, E = unknown> = (
@@ -213,6 +212,8 @@ export type Chrome<S = unknown, E = unknown> = {
   readonly view: (
     ctx: Context<S, E> & { readonly data: Json; readonly slot: D.Child },
   ) => D.View
+  /** Fields this layout replaces. Omitted fields stay as the layout outside set them. */
+  readonly head?: (ctx: Context<S, E> & { readonly data: Json }) => HeadPatch
 }
 
 /** Everything a layout needs: the markup around a page, and what that markup reads. */
@@ -221,6 +222,8 @@ export type LayoutSpec<D extends Json = Json, S = unknown, E = unknown> = {
   readonly view: (
     ctx: Context<S, E> & { readonly data: D; readonly slot: D.Child },
   ) => D.View
+  /** Fields this layout replaces on the routes it wraps. It sees what `load` read. */
+  readonly head?: (ctx: Context<S, E> & { readonly data: D }) => HeadPatch
 }
 
 /** A layout, ready to use: it takes the routes it is for and hands them back wrapped. */
@@ -318,7 +321,7 @@ export type PageRoute<D extends Json = Json, S = unknown, E = unknown> = {
   readonly on: PageHandlers<D, S, E>
   readonly load: Load<D, S, E>
   readonly view: PageView<D, S, E>
-  readonly head: PageHead<D, S, E>
+  readonly head?: PageHead<D, S, E>
   /** The layouts this page sits in, outermost first. */
   readonly layouts: readonly Chrome<S, E>[]
   readonly still: Still

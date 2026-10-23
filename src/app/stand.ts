@@ -4,7 +4,7 @@ import type { KitIsland, Manifest, Sheet } from '../build/build.ts'
 import type { Hazard } from '../document/html.ts'
 import type { Prebuilt } from './data.ts'
 import type { Options as HandlerOptions } from './server.ts'
-import type { Arrival, DocumentHead, Reply, Route, Routes } from './types.ts'
+import type { Arrival, Reply, Route, Routes } from './types.ts'
 import { collectBeyond } from '../document/css.ts'
 import { prebuilt } from './data.ts'
 import { liveRoute, reloadRoute } from './events.ts'
@@ -139,19 +139,11 @@ const linkTo = (sheet: Sheet) => (href: string): Link => ({
   'data-kit-styles': P.joinWith (' ') (sheet.styleIds),
 })
 
-const tagsOf = (link: DocumentHead['link']): readonly Link[] =>
-  P.defaultTo<readonly Link[]> ([]) (link)
-
-/** Kit's own sheet leads the application's links. Pages still add theirs after. */
-const withSheet =
-  <S, E>(at: Standing<S, E>) => (href: string): DocumentHead => ({
-    title: at.options.head?.title,
-    meta: at.options.head?.meta,
-    link: P.prepend (linkTo (at.sheet) (href)) (tagsOf (at.options.head?.link)),
-  })
-
-const headed = <S, E>(at: Standing<S, E>): DocumentHead | undefined =>
-  P.maybe_ (() => at.options.head) (withSheet (at)) (sheetIn (at))
+/** Kit's own sheet. It leads the links a page settled on, and a page cannot drop it by replacing `link`. */
+const styleLinkOf = <S, E>(
+  at: Standing<S, E>,
+): Link | undefined =>
+  P.maybe_<Link | undefined> (() => undefined) (linkTo (at.sheet)) (sheetIn (at))
 
 const asOwn = <S, E>(at: Standing<S, E>) => (): Styling | undefined =>
   at.options.styles
@@ -191,7 +183,7 @@ export function drawingOf<S, E = unknown>(at: Standing<S, E>): Draws<E> {
     ...at.options,
     routes: at.routes,
     chunks: at.manifest,
-    head: headed (at),
+    styleLink: styleLinkOf (at),
     styles: stylesIn (at),
     onHazard: P.defaultTo (warn) (at.options.onHazard),
     always: alwaysIn (at),

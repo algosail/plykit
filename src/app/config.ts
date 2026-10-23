@@ -3,7 +3,7 @@ import type { StaticOptions } from '../fs/static.ts'
 import type { Options as HandlerOptions } from './server.ts'
 import type { Middleware } from './types.ts'
 
-type Given<S, E> = Omit<HandlerOptions<S, E>, 'chunks' | 'through'>
+type Given<S, E> = Omit<HandlerOptions<S, E>, 'chunks' | 'through' | 'styleLink'>
 
 /** How to run an app. */
 export type Options<S = unknown, E = unknown> = Given<S, E> & {

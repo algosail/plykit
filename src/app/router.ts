@@ -6,7 +6,7 @@ import type {
   Context,
   Endpoint,
   Handlers,
-  Head,
+  HeadPatch,
   Json,
   Layout,
   LayoutSpec,
@@ -82,19 +82,24 @@ const widened = <D extends Json, C extends { readonly data: Json }, B>(
 ): (ctx: C) => B =>
 (ctx: C): B => f (narrowed<D, C> (ctx))
 
-const noHead: Head = { title: P.nothing (), meta: [] }
-
 const noLoad = <D extends Json>(): F.Future<unknown, Loaded<D>> =>
   F.resolve (data ({} as D))
 
 const headOf = <D extends Json, S, E>(
-  own: P.Maybe<PageHead<D, S, E>>,
-): PageHead<Json, S, E> =>
-  P.maybe_ (
-    P.K<PageHead<Json, S, E>> (P.K (noHead)),
-  ) (
-    widened<D, Given<Json, S, E>, Head>,
-  ) (own)
+  own: PageHead<D, S, E> | undefined,
+): PageHead<Json, S, E> | undefined =>
+  own === undefined
+    ? undefined
+    : widened<D, Given<Json, S, E>, HeadPatch> (own)
+
+const chromeOf = <D extends Json, S, E>(spec: LayoutSpec<D, S, E>): Chrome<S, E> => {
+  const chrome: Chrome<S, E> = {
+    load: P.defaultTo<Load<Json, S, E>> (noLoad) (spec.load),
+    view: widened<D, Framed<Json, S, E>, View> (spec.view),
+  }
+  const head = headOf<D, S, E> (spec.head)
+  return head === undefined ? chrome : { ...chrome, head }
+}
 
 const stillnessOf = (spec: {
   readonly static?: boolean
@@ -122,7 +127,7 @@ export function page<D extends Json, S = unknown, E = unknown>(
     load: P.defaultTo<Load<Json, S, E>> (noLoad) (spec.load),
     layouts: [],
     view: widened<D, Given<Json, S, E>, View> (spec.view),
-    head: headOf<D, S, E> (P.fromNullable (spec.head)),
+    head: headOf<D, S, E> (spec.head),
   }
 }
 
@@ -167,10 +172,7 @@ const wrapped = <S, E>(chrome: Chrome<S, E>): (route: Route<S, E>) => Route<S, E
 export function layout<D extends Json, S = unknown, E = unknown>(
   spec: LayoutSpec<D, S, E>,
 ): Layout<S, E> {
-  const around = wrapped<S, E> ({
-    load: P.defaultTo<Load<Json, S, E>> (noLoad) (spec.load),
-    view: widened<D, Framed<Json, S, E>, View> (spec.view),
-  })
+  const around = wrapped<S, E> (chromeOf (spec))
 
   return (routes: Routes<S, E>): Route<S, E>[] => P.map (around) (flat (routes))
 }

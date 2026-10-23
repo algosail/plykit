@@ -107,54 +107,142 @@ test ('kit/server — the head sees both the captures and the state', async () =
   assert.deepStrictEqual (seen, ['one /head/[slug] nobody'])
 })
 
-test ('kit/server — the application holds the head and the page adds to it', async () => {
+test ('kit/server — a page and a layout replace the fields they set', async () => {
+  const shelf = layout<{ readonly shelf: string }> ({
+    load: () => F.resolve (data ({ shelf: 'Books' })),
+    head: (ctx) => ({ title: P.just (ctx.data.shelf) }),
+    view: (ctx) => H.div ([ctx.slot]),
+  })
+  const outer = layout ({
+    head: () => ({
+      title: P.just ('Outer'),
+      meta: [{ name: 'outer', content: 'yes' }],
+    }),
+    view: (ctx) => H.div ([ctx.slot]),
+  })
+  const inner = layout ({
+    head: () => ({ title: P.just ('Inner') }),
+    view: (ctx) => H.div ([ctx.slot]),
+  })
   const home = page ({
     pattern: '/',
-    head: () => ({
-      title: P.just ('Desk'),
-      meta: [{ name: 'description', content: 'one shelf' }],
-      link: [{ rel: 'icon', href: '/icon.svg' }],
-    }),
+    head: () => ({ title: P.just ('Desk') }),
     view: () => H.p (['desk']),
   })
-  const bare = page ({
+  const inside = page ({
+    pattern: '/inside',
+    view: () => H.p (['in']),
+  })
+  const nested = page ({
+    pattern: '/nested',
+    view: () => H.p (['nested']),
+  })
+  const named = page ({
+    pattern: '/named',
+    head: () => ({ title: P.just ('Page') }),
+    view: () => H.p (['named']),
+  })
+  const icon = page ({
+    pattern: '/icon',
+    head: () => ({ link: [{ rel: 'icon', href: '/icon.svg' }] }),
+    view: () => H.p (['icon']),
+  })
+  const cleared = page ({
+    pattern: '/cleared',
+    head: () => ({ title: P.nothing (), link: [], meta: [] }),
+    view: () => H.p (['cleared']),
+  })
+  const barePage = page ({
     pattern: '/bare',
     view: () => H.p (['bare']),
   })
   const ask = handler ({
-    routes: [home, bare],
+    routes: [
+      home,
+      barePage,
+      ...shelf ([inside]),
+      ...outer ([...inner ([nested, named])]),
+      icon,
+      cleared,
+    ],
     head: {
-      title: (named) =>
-        P.maybe_ (() => P.just ('Room')) (
-          (name: string) => P.just (`${name} · Room`),
-        ) (named),
+      title: P.just ('Room'),
       meta: [{ name: 'theme-color', content: '#111' }],
       link: [{ rel: 'stylesheet', href: '/static/styles.css' }],
+    },
+    styleLink: {
+      rel: 'stylesheet',
+      href: '/_kit/styles.css',
+      'data-kit-styles': 'page',
     },
   })
 
   const html = await (await ask (new Request ('http://kit.test/'))).text ()
-  assert.ok ((html).includes ('<title>Desk · Room</title>'))
-  assert.ok ((html).includes ('<link rel="stylesheet" href="/static/styles.css">'))
-  assert.ok ((html).includes ('<link rel="icon" href="/icon.svg">'))
-  assert.deepStrictEqual (
-    html.indexOf ('/static/styles.css') < html.indexOf ('/icon.svg'),
-    true,
-  )
+  assert.ok ((html).includes ('<title>Desk</title>'))
   assert.ok ((html).includes ('<meta name="theme-color" content="#111">'))
-  assert.ok ((html).includes ('<meta name="description" content="one shelf">'))
+  assert.ok ((html).includes ('href="/static/styles.css"'))
   assert.deepStrictEqual (
-    html.indexOf ('theme-color') < html.indexOf ('description'),
+    html.indexOf ('/_kit/styles.css') < html.indexOf ('/static/styles.css'),
     true,
   )
+
+  const shelved = await (await ask (new Request ('http://kit.test/inside'))).text ()
+  assert.ok ((shelved).includes ('<title>Books</title>'))
+  assert.ok ((shelved).includes ('<meta name="theme-color" content="#111">'))
+  assert.ok ((shelved).includes ('href="/static/styles.css"'))
 
   const empty = await (await ask (new Request ('http://kit.test/bare'))).text ()
   assert.ok ((empty).includes ('<title>Room</title>'))
   assert.ok ((empty).includes ('href="/static/styles.css"'))
 
+  const framed = await (await ask (new Request ('http://kit.test/nested'))).text ()
+  assert.ok ((framed).includes ('<title>Inner</title>'))
+  assert.ok ((framed).includes ('<meta name="outer" content="yes">'))
+  assert.deepStrictEqual (framed.includes ('theme-color'), false)
+  assert.ok ((framed).includes ('href="/static/styles.css"'))
+
+  const titled = await (await ask (new Request ('http://kit.test/named'))).text ()
+  assert.ok ((titled).includes ('<title>Page</title>'))
+  assert.ok ((titled).includes ('<meta name="outer" content="yes">'))
+
+  const swapped = await (await ask (new Request ('http://kit.test/icon'))).text ()
+  assert.ok ((swapped).includes ('<title>Room</title>'))
+  assert.ok ((swapped).includes ('<link rel="icon" href="/icon.svg">'))
+  assert.deepStrictEqual (swapped.includes ('/static/styles.css'), false)
+  assert.deepStrictEqual (
+    swapped.indexOf ('/_kit/styles.css') < swapped.indexOf ('/icon.svg'),
+    true,
+  )
+
+  const gone = await (await ask (new Request ('http://kit.test/cleared'))).text ()
+  assert.deepStrictEqual (gone.includes ('<title>'), false)
+  assert.deepStrictEqual (gone.includes ('theme-color'), false)
+  assert.deepStrictEqual (gone.includes ('/static/styles.css'), false)
+  assert.ok ((gone).includes ('href="/_kit/styles.css"'))
+
   const missing = await (await ask (new Request ('http://kit.test/nope'))).text ()
-  assert.ok ((missing).includes ('<title>404 · Room</title>'))
+  assert.ok ((missing).includes ('<title>404</title>'))
+  assert.ok ((missing).includes ('<meta name="theme-color" content="#111">'))
   assert.ok ((missing).includes ('href="/static/styles.css"'))
+  assert.ok ((missing).includes ('href="/_kit/styles.css"'))
+
+  const quiet = page<Record<string, never>, string> ({
+    pattern: '/bare',
+    view: () => H.p (['bare']),
+  })
+  const down = handler ({
+    routes: [quiet],
+    head: {
+      title: P.just ('Room'),
+      meta: [{ name: 'theme-color', content: '#111' }],
+      link: [{ rel: 'stylesheet', href: '/static/styles.css' }],
+    },
+    state: () => F.reject<unknown, string> (new Error ('down')),
+  })
+  const failedState = await (await down (new Request ('http://kit.test/bare'))).text ()
+  assert.ok ((failedState).includes ('<title>500</title>'))
+  assert.ok ((failedState).includes ('<meta name="theme-color" content="#111">'))
+  assert.ok ((failedState).includes ('href="/static/styles.css"'))
 })
 
 test ('kit/server — without its own error view kit draws a bare one', async () => {

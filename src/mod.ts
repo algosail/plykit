@@ -12,6 +12,7 @@ export type {
   Handler,
   Handlers,
   Head,
+  HeadPatch,
   Json,
   JsonArray,
   JsonObject,
