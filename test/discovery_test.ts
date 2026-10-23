@@ -5,7 +5,8 @@ import { Window } from 'happy-dom'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { About, Item, Place, Route, Written } from '../src/mod.ts'
-import { readText } from '../src/disk.ts'
+import { staticSite } from '../src/build/site.ts'
+import { readText } from '../src/fs/disk.ts'
 import {
   data,
   endpoint,
@@ -16,7 +17,6 @@ import {
   robots,
   sitemap,
 } from '../src/mod.ts'
-import { staticSite } from '../src/nodejs.ts'
 import './fixture/islands/desk.ts'
 
 import './fixture/islands/mark.ts'

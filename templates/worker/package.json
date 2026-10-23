@@ -1,0 +1,20 @@
+{
+  "name": "room",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "node build.ts",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@algosail/plydom": "^0.1.1",
+    "@algosail/plykit": "^0.1.2"
+  },
+  "devDependencies": {
+    "wrangler": "^4.151.3"
+  }
+}

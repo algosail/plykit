@@ -6,6 +6,7 @@ import * as S from '@algosail/plystream'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Route } from '../src/mod.ts'
+import { asked, find } from '../src/document/partial.ts'
 import {
   answer,
   css,
@@ -19,7 +20,6 @@ import {
   serverBackend,
   serverRoot,
 } from '../src/mod.ts'
-import { asked, find } from '../src/partial.ts'
 
 const at = (path: string) => `http://kit.test${path}`
 const asking = (path: string, headers?: Record<string, string>) =>

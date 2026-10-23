@@ -1,0 +1,18 @@
+// Copy this next to the application. Kit does not write this file or worker.ts.
+// build.ts calls workerBuild. Add a top-level directory here when you add one.
+// Leave dist and .kit out: the build writes them, and Wrangler would start again.
+// When include contains 'live', export KitLive from worker.ts and add the durable object shown in the README.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "room",
+  "main": "./worker.ts",
+  "compatibility_date": "2026-10-23",
+  "assets": {
+    "directory": "./dist/assets",
+    "binding": "ASSETS"
+  },
+  "build": {
+    "command": "npm run build",
+    "watch_dir": ["app.ts", "build.ts", "routes", "static", "ui"]
+  }
+}

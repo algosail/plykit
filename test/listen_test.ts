@@ -1,9 +1,9 @@
 import * as F from '@algosail/plyfuture'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { Listening } from '../src/listen.ts'
-import { listen } from '../src/listen.ts'
+import type { Listening } from '../src/node/listen.ts'
 import { announce, endpoint, handler, liveRoute, stale, text } from '../src/mod.ts'
+import { listen } from '../src/node/listen.ts'
 
 const within = <A>(ms: number, work: Promise<A>): Promise<A> =>
   new Promise ((resolve, reject) => {

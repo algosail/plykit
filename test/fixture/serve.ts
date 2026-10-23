@@ -1,4 +1,4 @@
-import { dev, listen } from '../../src/nodejs.ts'
+import { dev, listen } from '../../src/node/mod.ts'
 import application from './app.ts'
 
 /**

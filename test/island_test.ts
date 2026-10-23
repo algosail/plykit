@@ -7,7 +7,8 @@ import { Window } from 'happy-dom'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Route } from '../src/mod.ts'
-import { declared as declaredIslands } from '../src/island.ts'
+import { discover } from '../src/build/build.ts'
+import { declared as declaredIslands } from '../src/islands/island.ts'
 import {
   css,
   data,
@@ -19,7 +20,6 @@ import {
   page as routePage,
   usedIslands,
 } from '../src/mod.ts'
-import { discover } from '../src/nodejs.ts'
 import { patchFormSibling } from './dom.ts'
 
 const doc = new Window ().document as unknown as Document

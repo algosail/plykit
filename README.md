@@ -10,7 +10,8 @@ stream. Next to it stand `@algosail/ply`, `@algosail/plyfuture`, and
 `@algosail/plystream`.
 
 Production is a Cloudflare Worker. Deno Deploy, which the framework was
-written for earlier, is shutting down. Locally the application listens on Node.
+written for earlier, is shutting down. Local Cloudflare is `wrangler dev`,
+which runs the application's build. That script calls `workerBuild`.
 
 ```
 page   = the server drew the markup, zero scripts
@@ -34,9 +35,9 @@ island = a piece of that markup the browser brings up again
 - [Data read at build](#data-read-at-build)
 - [Feeds, sitemap, robots](#feeds-sitemap-robots)
 - [Build](#build)
-- [Local run](#local-run)
 - [Deploy to Cloudflare Workers](#deploy-to-cloudflare-workers)
 - [Platform: bindings and data](docs/cloudflare.md)
+- [Node](#node)
 - [Static site](#static-site)
 
 ## Entry points
@@ -47,22 +48,26 @@ application stays source. Node 22.7 or newer.
 | import | what you take from here |
 | --- | --- |
 | `@algosail/plykit` | runtime: routes, replies, islands, the `handler` |
-| `@algosail/plykit/node` | build, the port, publishing a directory, a static site |
+| `@algosail/plykit/build` | `workerBuild`, the island compiler, `stage`, a static site |
 | `@algosail/plykit/workers` | `worker` and the Durable Object `KitLive` |
-| the `plykit` command | `dev`, `build`, `preview` |
+| `@algosail/plykit/node` | `dev`, `serve`, and `listen`: the same app on a Node port |
 
 The worker imports `@algosail/plykit/workers` and the application config. The
-config imports the runtime. Do not import `@algosail/plykit/node` from the
-worker graph: that is disk reads and esbuild.
+config imports the runtime. Do not import `@algosail/plykit/build` or
+`@algosail/plykit/node` from the worker graph: that is disk, esbuild, and
+`node:http`.
 
-The `plykit` command is installed as the package binary. Three calls, day
-after day:
+Day to day you run Wrangler, and Wrangler runs `npm run build`. That script
+calls `workerBuild` from `@algosail/plykit/build`. The files under `templates/worker/`
+are a starting `wrangler.jsonc`, `worker.ts`, `build.ts`, `app.ts`, and
+`package.json`.
 
 ```sh
-plykit dev
-plykit build
-plykit preview
+wrangler dev
+wrangler deploy
 ```
+
+`templates/node/` is the other host, on a Node port. It is described in [Node](#node).
 
 The application is `app.ts` in the current directory. The default export is a
 `Config`.
@@ -75,20 +80,14 @@ const application: Config = { routes: [home] }
 export default application
 ```
 
-`--app` names another file. With no arguments, and with an unknown command,
-`plykit` prints help and exits with code 1. `--help` prints the same help and
-exits with code 0.
-
-```sh
-plykit dev [--app app.ts]
-plykit build [--app app.ts] [--target workers|node|static] [--name name]
-plykit preview [--app app.ts]
-```
+`workerBuild(application, { dev: true })` is the unminified build that
+`wrangler dev` asks for. Pass Wrangler flags to `wrangler` itself.
 
 ## Application
 
-`Config` is the argument of `app`, `dev`, `serve`, `build`, and `worker`. The
-`routes` field is required. The rest is filled in when it is needed.
+`Config` is the application. `worker`, `workerBuild`, `build`, `dev`, and
+`serve` take it. The `routes` field is required. The rest is filled in when
+it is needed.
 
 | field | what for |
 | --- | --- |
@@ -107,9 +106,9 @@ plykit preview [--app app.ts]
 | `base` | the prefix of those chunks. `/_kit/` by default |
 | `assets` | a directory of your own files: images, fonts |
 | `include` | islands of kit itself: `'navigation'`, `'live'`, `'reload'` |
-| `build` | build islands at start. `app` builds, `serve` does not, `dev` always builds |
-| `minify` | compress chunks. `build()` compresses, `dev` does not |
-| `prebuilt` | answer a static page with data from `kit-data.json`. `dev` turns this off |
+| `build` | build islands when a host starts. `workerBuild` always builds |
+| `minify` | compress chunks. `wrangler dev` leaves them readable |
+| `prebuilt` | answer a static page from `kit-data.json`. The worker reads `record.json`, and `wrangler dev` leaves that data empty |
 
 `assets`:
 
@@ -127,10 +126,16 @@ Where chunks are put if the directory is not named:
 
 The browser still asks for those files at `/_kit/` (or `base`). `assets` stays the application's own files, at `/static/` unless `assets.base` says otherwise.
 
+`assets` is set on the application. `workerBuild` copies `assets.dir` and does not look for a `static/` directory on its own. `assets.dir` is a build setting. The worker does not read it: it serves `assets.base`, or `/static/` when `base` is omitted. A relative string for `dir` is resolved from the filesystem root, the same way as `stage`'s `to`. A URL next to the module stays next to the module:
+
+```ts
+assets: { dir: new URL('./static/', import.meta.url) }
+```
+
 A relative `outDir` is resolved from the current directory. The `to` field of
-`publish` does not work that way: a relative string there is resolved from the
-filesystem root. The `plykit build` command passes an absolute `dist`. From
-your own script, pass `resolve('dist')` or a `file:` URL.
+`stage` does not work that way: a relative string there is resolved from the
+filesystem root. `workerBuild` passes an absolute `dist`. From your own
+script, pass `resolve('dist')` or a `file:` URL.
 
 ## Routes
 
@@ -270,13 +275,12 @@ One context for every function of the route.
 | `request` | the `Request` itself |
 | `routeId` | the route pattern, or an empty string |
 | `state` | what `state` returned. The function itself sees only the `Request` |
-| `env` | platform bindings. Here this is `undefined` in `plykit dev` |
+| `env` | platform bindings. The worker passes what Wrangler bound |
 | `live` | the free channel of this request. `stale` and `announce` write here |
 | `client` | `P.Maybe<string>`, the connection address, when there is one |
 
-The address is taken from the connection, not from forwarding headers. Local
-`listen` puts `socket.remoteAddress` here. The worker puts `cf-connecting-ip`
-here.
+The address is taken from the connection, not from forwarding headers. The
+worker puts `cf-connecting-ip` here.
 
 `load` returns a `Future` of one of three:
 
@@ -360,9 +364,8 @@ your own server that has already done the build itself.
 the status, and the `hazards` list. `renderDocument` assembles the document
 around it.
 
-`app`, `dev`, and `serve` from `@algosail/plykit/node` fill in the chunks, the
-files, and the prebuilt data themselves and return the same handler. They are
-described in [local run](#local-run).
+On Workers, `worker(application, { record })` is that handler. The record
+carries the chunk manifest. `handler` itself is what a test calls.
 
 The order of one request:
 
@@ -546,9 +549,7 @@ In the config `include` you name kit's islands, not your own:
 | --- | --- |
 | `navigation` | follows links and submits forms without a full reload |
 | `live` | one WebSocket on the page: `stale` and `announce` arrive through it |
-| `reload` | reloads the open page when the `dev` process has started again |
-
-`dev` adds `reload` itself.
+| `reload` | reloads the open page when the server process starts again |
 
 ## Styles
 
@@ -582,7 +583,7 @@ read of `process.env.KIT_PUBLIC_<NAME>` and `process.env['KIT_PUBLIC_<NAME>']`
 with a literal. If the name is not in the environment, `void 0` stands in its
 place, and `??` decides from there. A name with no prefix stays a read and
 lands in a build warning. The prefix is exported as `PUBLIC_PREFIX` from
-`@algosail/plykit/node`.
+`@algosail/plykit/build`.
 
 ## Navigation, page parts, live updates
 
@@ -670,15 +671,13 @@ there was no socket is lost, and a `stale` is caught up by that refresh.
 `retry` on a frame, when it is there, sets the pause before a retry.
 Otherwise the pause is one second.
 
-On `plykit dev`, and with no `KIT_LIVE` binding, `ctx.live` is the channel of
-this process. With the binding, `worker` puts in a channel that sends a short
-`POST` to `KitLive` and does not also write it into the process. The socket
-itself is not put on the page reply: `worker` answers `101`, and `listen`
-takes the connection when `liveRoute` is mounted. Your own `channel({ path })`
-stays SSE in the process.
+With the `KIT_LIVE` binding, `worker` puts in a channel that sends a short
+`POST` to `KitLive`. The socket itself is not put on the page reply: `worker`
+answers `101`. Your own `channel({ path })` stays SSE. `wrangler dev` uses
+that binding when the config has it.
 
-`reload` and `reloadRoute()` are for development. The path is `/_kit-reload`,
-the event is `kit-run`. `dev` adds the route and the island itself.
+`reload` and `reloadRoute()` reload an open page. The path is `/_kit-reload`,
+the event is `kit-run`.
 
 The event fields are the same on both channels:
 `{ data, event?, id?, retry? }`. `data` is required. On your own channel they
@@ -712,9 +711,9 @@ serves what was written, an unknown one goes to the real `load`.
 
 The file of that record is called `kit-data.json`. It lies next to the
 chunks, not in the directory served to the browser. The `DATA` constant is
-that name. `readPrebuilt(outDir)` from `@algosail/plykit/node` reads the file.
-`app` and `serve` read it themselves, while `prebuilt` is not turned off.
-`dev` does not read it.
+that name. `readPrebuilt(outDir)` from `@algosail/plykit/build` reads the file.
+`workerBuild` copies it into `record.json` for a deploy. `wrangler dev` leaves
+`data` null, so those pages load live.
 
 ## Feeds, sitemap, robots
 
@@ -747,67 +746,50 @@ ES2022. The platform is `neutral`, so a read of `process.env` reaches the
 chunk. After the environment substitution, a file's own name gets a hash
 suffix. Zero islands means esbuild does not start.
 
-`plykit build` builds the islands first and prints a report: names, styles,
-weight, files, what was substituted from the environment, what stayed a read,
-which static pages were read. It then writes the entry for one target.
-`--target` sets the target. With no flag, that is `workers`.
+`workerBuild` is that build for Workers. It builds the islands first and
+prints a report: names, styles, weight, files, what was substituted from the
+environment, what stayed a read, which static pages were read. Then `stage`
+copies the chunks and `assets` into `dist/assets`, writes `dist/record.json`
+beside the `assets` directory rather than inside it, and puts `_headers`
+there. The worker entry is your `worker.ts`. `workerBuild` does not write it.
 
-| `--target` | what the command writes after the report | how to run it |
-| --- | --- | --- |
-| `workers` | `dist/assets`, `dist/record.json`, `dist/worker.ts`, and `wrangler.jsonc` if the file is not there yet | `npx wrangler deploy` |
-| `node` | the same `dist/assets` and `dist/record.json`, plus `dist/server.ts` | `node dist/server.ts`, from the application root |
-| `static` | HTML in `dist/`: pages with `static: true`, `404.html`, the chunks, and `assets` | any static server serves the `dist/` directory |
+```ts
+import { workerBuild } from '@algosail/plykit/build'
+import application from './app.ts'
 
-`dev` and `preview` stay on Node for any target. They show the application
-and do not replace the entry you chose.
-
-For `workers` and `node`, after the report, `publish` copies the chunks and
-`assets` into `dist/assets`, writes `dist/record.json` beside the `assets`
-directory rather than inside it, and puts `_headers` there. The `static`
-target skips this step: `staticSite` places the files.
-
-The worker name comes from `--name`, otherwise from `name` in `package.json`,
-otherwise it is `kit`. The flag matters for `workers`. The `KitLive` binding
-goes into the config when `include` contains `'live'`.
-
-`workers` writes `dist/worker.ts` on every build, and writes `wrangler.jsonc`
-only when the file is not there yet. A later `plykit build` leaves an
-existing `wrangler.jsonc` alone and prints:
-
-```
-wrangler.jsonc left in place. main: ./dist/worker.ts
+await workerBuild(application)
 ```
 
-`main` in that file must point at `./dist/worker.ts`.
+Copy `templates/worker/wrangler.jsonc` into the application and edit it there.
+`workerBuild` does not read or write that file.
 
-`node` writes `dist/server.ts` instead of a worker. The file calls `serve`
-and `listen` and prints the address. This target does not create
-`wrangler.jsonc`, and it does not change one that is already there.
-`dist/worker.ts` from an earlier build stays where it is too.
+`workerBuild` reads `WRANGLER_COMMAND`. `wrangler dev` and `wrangler types`
+set `dev` and `types`: chunks are not minified, `prepare` does not run, and
+`record.json` has `data: null`. A call with no `dev` flag, and
+`wrangler deploy`, keep the production build: minify, and the data of static
+pages in the record. `workerBuild(application, { dev: true })` keeps the dev
+build when `WRANGLER_COMMAND` is `deploy`. Wrangler runs `build.command`.
+In the Workers template that command is `npm run build`.
 
-If the application does not set `outDir`, the server fills in `.kit`, the same
-directory the command chose at build. `include` with `live` on this entry is
-one process's channel. The `KitLive` class is not exported here.
+With `'live'` in `include`, `worker.ts` also exports `KitLive`, and the
+binding stays in your `wrangler.jsonc`. `dist/record.json` and copies under
+`dist/assets` are written only when the bytes differ, so a rebuild that
+changes nothing does not touch their mtime.
 
-After the report, `static` calls `staticSite` with `build: false` and writes
-files into `dist/`. `record.json`, `worker.ts`, and `wrangler.jsonc` do not
-appear. The build chunks stay in `.kit` (or in `outDir`, when that was set).
-Only the island files are copied into the site, under the chunk prefix. A
-chunk directory that sits inside `assets` is not copied again with the
-application's files. Which routes land in the directory is described below,
-in [Static site](#static-site).
+A static site is `staticSite`, described in [Static site](#static-site). It
+writes HTML into its own directory and does not write `record.json`.
 
-The same steps, called from code, are imported from `@algosail/plykit/node`.
+The same steps, called on their own, are imported from `@algosail/plykit/build`.
 
 ```ts
 import { resolve } from 'node:path'
-import { build, chunkDir, publish, report } from '@algosail/plykit/node'
+import { build, chunkDir, report, stage } from '@algosail/plykit/build'
 
 const outDir = await chunkDir(application)
 const built = await build({ ...application, outDir })
 console.log(report(built))
 
-const laid = await publish({
+const laid = await stage({
   outDir,
   to: resolve('dist'),
   assets: application.assets,
@@ -843,9 +825,8 @@ directory by default. `create: false` only computes the path.
 
 `discover(where)` reads a manifest that is already written and builds
 nothing. With no `kit-build.json`, the addresses stay without a hash.
-`serve` uses this when the build is already on disk.
 
-`publish(options)` returns `{ assets, record, files }`. `assets` is the path
+`stage(options)` returns `{ assets, record, files }`. `assets` is the path
 `to/assets`. `record` is the path `to/record.json`. The directory for the
 browser gets only the files from the build record and the `assets` tree.
 `kit-build.json` and `kit-data.json` are not copied there: their contents
@@ -858,9 +839,10 @@ move into `record.json`.
 | `manifest` | which island is in which chunk |
 | `styles` | the sheet address, or `null` |
 | `styleIds` | the blocks |
+| `files` | the static prefix, such as `/static/`, or `null` when nothing was copied |
 | `data` | JSON of the static pages, or `null` |
 
-The chunk prefix inside the directory repeats `base`. For `/_kit/`, publish
+The chunk prefix inside the directory repeats `base`. For `/_kit/`, `stage`
 writes `_headers`:
 
 ```
@@ -871,47 +853,7 @@ writes `_headers`:
 The file name is its contents, so the cache is long. Your own `base` gets the
 same rule on its own prefix.
 
-`report(built)` is the report text the command prints.
-
-## Local run
-
-`dev`, `serve`, `app`, and `listen` live in `@algosail/plykit/node`. They
-return a handler and do not take a port themselves, except `listen`.
-
-| function | what it does at start |
-| --- | --- |
-| `dev(config)` | builds islands with no compression, does not read `kit-data.json`, adds the `reload` island, writes the method, path, status, and time to the console |
-| `serve(config)` | builds nothing and writes nothing. Reads the chunks and, unless that is turned off, `kit-data.json` |
-| `app(config)` | the shared path. `build: false` turns it into `serve`. It builds by default |
-| `listen(handler, { port? })` | listens on `port`, otherwise `PORT`, otherwise 8000. Returns `{ port, close }`. If port 0 was asked for, `port` holds the port the system chose |
-
-`listen` does not print the address. The command does:
-`http://localhost:<port>`.
-
-```ts
-import { dev, listen } from '@algosail/plykit/node'
-import application from './app.ts'
-
-const running = await listen(await dev(application))
-console.log(`http://localhost:${running.port}`)
-```
-
-`plykit dev` and `plykit preview` are put together the same way. `preview`
-calls `serve`: it shows what `build` wrote, and it does not add the reload
-island. The port is the same.
-
-Static files on the local server go through the same handler. `GET` and
-`HEAD` under the chunk prefix and under the `assets` prefix read a file. A
-file up to 64 KB is read whole. A larger one is served as a stream. Paths
-under those prefixes that have no file answer 404 and do not reach a page.
-Other paths are drawn. On the worker, the `ASSETS` binding does the same
-when it is there.
-
-`files(options)` from the same module serves one directory as a
-`Future<Maybe<Reply>>`, for when the handler is assembled by hand.
-`mediaType(name)` guesses the type from the extension.
-`fileTag({ size, mtime })` builds a weak `etag` from the size and the time.
-`cacheForever()` returns `public, max-age=31536000, immutable`.
+`report(built)` is the report text `workerBuild` prints.
 
 ## Deploy to Cloudflare Workers
 
@@ -919,61 +861,83 @@ How the worker meets bindings, storage, and the rest of the platform is
 covered on its own: [docs/cloudflare.md](docs/cloudflare.md). Below is what
 the build puts on disk, and how Wrangler runs it.
 
-After `plykit build` with target `workers` (the same as no flag), the
-directory looks like this:
+`wrangler dev` runs `build.command` before it serves, and again when a
+watched file changes. `wrangler deploy` does the same. A fresh clone with
+an empty `dist/` boots from that command. `npx wrangler dev` does this too,
+once `templates/worker/wrangler.jsonc` is the application's config.
+
+After `workerBuild`, the directory looks like this:
 
 ```
 dist/assets/           files the platform serves
 dist/assets/_kit/      chunks and styles
 dist/assets/_headers
-dist/record.json       the manifest for the worker
-dist/worker.ts         the entry
-wrangler.jsonc         only if it was not there
+dist/record.json       the manifest the worker imports
+worker.ts              the entry, copied from templates/worker/
+wrangler.jsonc         the application's file, copied from templates/worker/
 ```
 
-The command writes `dist/worker.ts` itself. With `live` in `include` it looks
-like this:
+`templates/worker/worker.ts` is the entry. It imports the application and `dist/record.json`:
 
 ```ts
-import { KitLive, worker } from '@algosail/plykit/workers'
-import application from '../app.ts'
-import record from './record.json' with { type: 'json' }
+import { worker } from '@algosail/plykit/workers'
+import application from './app.ts'
+import record from './dist/record.json' with { type: 'json' }
 
-export { KitLive }
 export default worker(application, { record })
 ```
 
-Without `live`, only `worker` is imported. The class is not exported. The
-path to the application is resolved from `dist/`, and it gets a `./` when it
-is a relative path with no dot.
+With `'live'` in `include`, the same file also exports the class:
 
-The `wrangler.jsonc` the command writes, when the file is not there yet:
+```ts
+export { KitLive } from '@algosail/plykit/workers'
+```
+
+`templates/worker/wrangler.jsonc` is the file to copy:
 
 ```jsonc
 {
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "reading-room",
-  "main": "./dist/worker.ts",
-  "compatibility_date": "2026-10-15",
+  "main": "./worker.ts",
+  "compatibility_date": "2026-10-23",
   "assets": { "directory": "./dist/assets", "binding": "ASSETS" },
-  "durable_objects": {
-    "bindings": [{ "name": "KIT_LIVE", "class_name": "KitLive" }]
-  },
-  "exports": {
-    "KitLive": { "type": "durable-object", "storage": "sqlite" }
+  "build": {
+    "command": "npm run build",
+    "watch_dir": ["app.ts", "build.ts", "routes", "static", "ui"]
   }
 }
 ```
 
-The Durable Object block is there only together with `live`. The generated
-config has no `nodejs_compat` flag. If the application needs `node:` modules,
-add the flag to your own `wrangler.jsonc`. Wrangler compiles `dist/worker.ts`
-itself. Kit has no separate build of the worker.
+`build.ts` is the script that command runs:
 
-Then the ordinary Wrangler commands:
+```ts
+import { workerBuild } from '@algosail/plykit/build'
+import application from './app.ts'
+
+await workerBuild(application)
+```
+
+`watch_dir` is the list you keep. `dist`, `.kit`, `node_modules`,
+`.wrangler`, `.git`, `coverage`, `wrangler.jsonc`, `wrangler.json`,
+`wrangler.toml`, and `worker-configuration.d.ts` stay off it, and so does
+every name that starts with `.` (`.dev.vars` among them). Watching `.`
+would run the build again, because the build writes into `dist`. Wrangler
+does not ignore `node_modules` inside a watched directory, so name the
+directories you mean. A new top-level directory is one more entry in that
+list.
+
+Add the Durable Object block yourself when `include` contains `'live'`,
+and export `KitLive` from `worker.ts`. The template leaves both out. The
+config has no `nodejs_compat` flag. If the application needs `node:` modules,
+add the flag. Wrangler compiles `worker.ts` itself. Kit has no separate
+build of the worker.
+
+Then Wrangler:
 
 ```sh
-npx wrangler dev
-npx wrangler deploy
+wrangler dev
+wrangler deploy
 ```
 
 The platform serves files from `dist/assets` before the worker. Do not turn
@@ -981,9 +945,10 @@ The platform serves files from `dist/assets` before the worker. Do not turn
 the worker as an error page: `worker` draws it.
 
 The worker itself still looks at the `ASSETS` binding, and only for `GET` and
-`HEAD` under the chunk prefix and, if `assets` is set, under the static
-prefix. The binding's reply is returned as it is, a 404 included. Such a path
-does not fall through into a page. Other paths are drawn.
+`HEAD` under the chunk prefix, under `assets.base` when `assets` is set, and
+under `record.files` when that prefix was copied. The binding's reply is
+returned as it is, a 404 included. Such a path does not fall through into a
+page. Other paths are drawn.
 
 `worker(config, { record })` returns `{ fetch(request, env, ctx) }`.
 `record` is the `record.json` module. `fetch` puts the bindings on `ctx.env`
@@ -1009,41 +974,63 @@ timer of its own. This does not apply to your own `channel()`.
 The class accepts `fetch(input, init?)`, because that is how the platform
 calls it. `POST` publishes an event. A request with `Upgrade: websocket`
 opens a socket. Anything else answers 426. With no binding, the free channel
-lives in one isolate, if the runtime has `WebSocketPair`. `plykit dev`
-finishes the same handshake itself and is subscribed to the same channel.
+lives in one isolate, if the runtime has `WebSocketPair`. `wrangler dev` uses
+`KitLive` when that binding is in the config. Add it
+next to the other bindings when `include` contains `'live'`:
 
-Your own config, when the file is already there and the command does not
-rewrite it, is built by `wranglerConfig`. By default `main` is `./worker.ts`,
-the directory is `./dist/assets`, and `live` is on. The command passes other
-values explicitly.
-
-```ts
-import { wranglerConfig } from '@algosail/plykit/node'
-
-wranglerConfig({
-  name: 'reading-room',
-  main: './dist/worker.ts',
-  assets: './dist/assets',
-  live: false,
-})
+```jsonc
+"durable_objects": {
+  "bindings": [{ "name": "KIT_LIVE", "class_name": "KitLive" }]
+},
+"exports": {
+  "KitLive": { "type": "durable-object", "storage": "sqlite" }
+}
 ```
 
-Do not run `plykit build` inside the kit repository itself. Its `dist` is the
-built package, and the command writes an application deploy directory into
-`dist`.
+Do not run `workerBuild` inside the kit repository itself. Its `dist` is the
+built package, and the function writes an application directory into `dist`.
+
+## Node
+
+`@algosail/plykit/node` serves the same `Config` from this process. `dev`
+builds the islands without compression, leaves static page data live, adds
+the `reload` island, and logs each answer. `serve` builds nothing and reads
+the chunks already on disk. `listen` binds a port: the one passed in,
+otherwise `PORT`, otherwise 8000. It returns `{ port, close }`.
+
+There is no Wrangler on this host and no platform bindings. `env` is
+`undefined`. The connection address is the socket's. Chunk files and `assets`
+are read from disk.
+
+`templates/node/` is that application. `dev` builds as it starts. `build`
+writes the islands into `.kit` and does not call `workerBuild`. `start`
+serves that directory.
+
+```sh
+npm run dev
+npm run build
+npm run start
+```
+
+```ts
+import { dev, listen } from '@algosail/plykit/node'
+import application from './app.ts'
+
+const running = await listen(await dev(application))
+console.log(`http://localhost:${running.port}`)
+```
 
 ## Static site
 
-`plykit build --target static` writes into `dist/` the same way. The command
-does not set `names` or `missing`. The defaults are used. Pass your own
-directory, `names`, or `missing` to `staticSite` from `@algosail/plykit/node`.
+`staticSite` from `@algosail/plykit/build` writes the site. Pass your own
+directory, `names`, or `missing` when the defaults are not the ones you want.
 
 `staticSite` asks the application with an ordinary `Request` and puts the
 reply on disk. There is no crawler: addresses come from routes with
 `static: true` and from their `paths`.
 
 ```ts
-import { siteReport, staticSite } from '@algosail/plykit/node'
+import { siteReport, staticSite } from '@algosail/plykit/build'
 
 const written = await staticSite(application, { out: './dist' })
 console.log(siteReport(written))

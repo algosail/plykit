@@ -16,6 +16,14 @@ import type {
   Table,
 } from '../src/mod.ts'
 import {
+  fields,
+  fieldsAll,
+  jsonField,
+  jsonText,
+  query,
+  queryAll,
+} from '../src/app/request.ts'
+import {
   after,
   aim,
   answer,
@@ -52,14 +60,6 @@ import {
   watch,
   whenRequest,
 } from '../src/mod.ts'
-import {
-  fields,
-  fieldsAll,
-  jsonField,
-  jsonText,
-  query,
-  queryAll,
-} from '../src/request.ts'
 
 const asNode = (e: Element | Text | Comment): ServerNode =>
   e as unknown as ServerNode
@@ -667,7 +667,7 @@ test ('kit/server — a built island and a true aim are met with silence', async
     (_p: Record<string, never>) => (H.p (['here'])),
     import.meta.url,
   )
-  const { navigation } = await import ('../src/navigate.ts')
+  const { navigation } = await import ('../src/islands/navigate.ts')
 
   const said: Hazard[] = []
   const home = page ({

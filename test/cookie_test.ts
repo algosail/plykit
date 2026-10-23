@@ -1,6 +1,7 @@
 import * as P from '@algosail/ply'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { discover } from '../src/build/build.ts'
 import {
   at,
   cookie,
@@ -18,7 +19,6 @@ import {
   withCookie,
   withHeader,
 } from '../src/mod.ts'
-import { discover } from '../src/nodejs.ts'
 import { error, routes, state, through } from './fixture/app.ts'
 
 await discover ({

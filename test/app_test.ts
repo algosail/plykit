@@ -5,7 +5,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Config, Loaded, Route } from '../src/mod.ts'
 import type { State } from './fixture/app.ts'
-import { readText, writeText } from '../src/disk.ts'
+import { build, discover, report } from '../src/build/build.ts'
+import { readText, writeText } from '../src/fs/disk.ts'
 import {
   collectStyles,
   data,
@@ -20,7 +21,7 @@ import {
   text,
   withHeader,
 } from '../src/mod.ts'
-import { app, build, dev, discover, report, serve } from '../src/nodejs.ts'
+import { app, dev, serve } from '../src/node/host.ts'
 import { error, routes, state } from './fixture/app.ts'
 import { theme } from './fixture/ui/theme.ts'
 import { inDir, inDirs } from './temp.ts'

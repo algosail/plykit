@@ -4,9 +4,9 @@ import * as F from '@algosail/plyfuture'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Reply, Route } from '../src/mod.ts'
-import { mkdir, rm, writeBytes, writeText } from '../src/disk.ts'
+import { mkdir, rm, writeBytes, writeText } from '../src/fs/disk.ts'
+import { forever as cacheForever, files, fileTag, mediaType } from '../src/fs/static.ts'
 import { answer, data, etag, page, statusOf } from '../src/mod.ts'
-import { cacheForever, files, fileTag, mediaType } from '../src/nodejs.ts'
 import { fileDir } from './temp.ts'
 
 const at = (path: string) => `http://kit.test${path}`

@@ -4,7 +4,7 @@ import * as S from '@algosail/plystream'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Endpoint, ServerEvent } from '../src/mod.ts'
-import { isLiveRoute, liveRoute } from '../src/events.ts'
+import { isLiveRoute, liveRoute } from '../src/app/events.ts'
 import {
   channel,
   endpoint,

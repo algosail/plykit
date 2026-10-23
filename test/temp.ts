@@ -1,6 +1,6 @@
 import * as P from '@algosail/ply'
 import * as F from '@algosail/plyfuture'
-import { mkdtemp, rm, rmSync } from '../src/disk.ts'
+import { mkdtemp, rm, rmSync } from '../src/fs/disk.ts'
 
 /**
  * Where a check writes: the site directory and the chunk directory.

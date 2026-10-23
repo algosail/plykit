@@ -1,6 +1,6 @@
 {
   "name": "@algosail/plykit",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -8,7 +8,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "templates"
   ],
   "publishConfig": {
     "access": "public"
@@ -23,17 +24,18 @@
       "default": "./dist/mod.js"
     },
     "./workers": {
-      "workerd": "./dist/workers.js",
-      "types": "./dist/workers.d.ts",
-      "default": "./dist/workers.js"
+      "workerd": "./dist/workers/mod.js",
+      "types": "./dist/workers/mod.d.ts",
+      "default": "./dist/workers/mod.js"
+    },
+    "./build": {
+      "types": "./dist/build/mod.d.ts",
+      "default": "./dist/build/mod.js"
     },
     "./node": {
-      "types": "./dist/nodejs.d.ts",
-      "default": "./dist/nodejs.js"
+      "types": "./dist/node/mod.d.ts",
+      "default": "./dist/node/mod.js"
     }
-  },
-  "bin": {
-    "plykit": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

@@ -1,8 +1,8 @@
 import * as P from '@algosail/ply'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { compile } from '../src/css.ts'
-import { absolute, replaceBlocks } from '../src/extract.ts'
+import { absolute, replaceBlocks } from '../src/build/extract.ts'
+import { compile } from '../src/document/css.ts'
 
 const block = (raw: string) => compile (raw)
 

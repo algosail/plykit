@@ -49,7 +49,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   })
 }) as typeof fetch
 
-const { navigation } = await import ('../src/navigate.ts')
+const { navigation } = await import ('../src/islands/navigate.ts')
 
 const wait = (ms: number): Promise<void> =>
   new Promise ((resolve) => {

@@ -4,6 +4,7 @@ import * as F from '@algosail/plyfuture'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Middleware, Reply, Route } from '../src/mod.ts'
+import { discover } from '../src/build/build.ts'
 import {
   after,
   answer,
@@ -21,7 +22,6 @@ import {
   whenRequest,
   withHeader,
 } from '../src/mod.ts'
-import { discover } from '../src/nodejs.ts'
 import { error, routes, state, through } from './fixture/app.ts'
 import './fixture/islands/desk.ts'
 import './fixture/islands/mark.ts'

@@ -7,13 +7,13 @@ import type {
   DurableObjectState,
   WorkerContext,
   WorkerRecord,
-} from '../src/workers.ts'
-import { chunkDir } from '../src/build.ts'
-import { mkdir, readText, realpath, stat, writeText } from '../src/disk.ts'
-import { stale } from '../src/events.ts'
+} from '../src/workers/mod.ts'
+import { stale } from '../src/app/events.ts'
+import { chunkDir } from '../src/build/build.ts'
+import { mkdir, readText, realpath, stat, writeText } from '../src/fs/disk.ts'
 import { css, endpoint, page, resetStyles, styleIds, text } from '../src/mod.ts'
-import { publish, wranglerConfig } from '../src/publish.ts'
-import { KitLive, worker } from '../src/workers.ts'
+import { KitLive, worker } from '../src/workers/mod.ts'
+import { stage } from '../src/workers/stage.ts'
 import { inDir } from './temp.ts'
 
 const record: WorkerRecord = {
@@ -199,6 +199,39 @@ test ('kit/workers — a file under the prefix comes from ASSETS, a page does no
   assert.deepStrictEqual (seen.includes ('/'), false)
 })
 
+test ('kit/workers — record.files is a static prefix when the app names none', async () => {
+  const seen: string[] = []
+  const app = worker ({
+    routes: [page ({ pattern: '/', view: () => H.p (['page']) })],
+  }, {
+    record: { ...record, files: '/static/' },
+  })
+  const env = {
+    ASSETS: {
+      fetch: (input: RequestInfo | URL): Promise<Response> => {
+        const url = input instanceof Request ? input.url : String (input)
+        seen.push (new URL (url).pathname)
+        return Promise.resolve (
+          new URL (url).pathname === '/static/lamp.svg'
+            ? new Response ('<svg/>')
+            : new Response (null, { status: 404 }),
+        )
+      },
+    },
+  }
+  const file = await app.fetch (new Request ('http://x/static/lamp.svg'), env, quiet)
+  assert.deepStrictEqual (file.status, 200)
+  assert.deepStrictEqual (await file.text (), '<svg/>')
+  const missingFile = await app.fetch (new Request ('http://x/static/gone.svg'), env, quiet)
+  assert.deepStrictEqual (missingFile.status, 404)
+  const chunk = await app.fetch (new Request ('http://x/_kit/mark.js'), env, quiet)
+  assert.deepStrictEqual (chunk.status, 404)
+  assert.deepStrictEqual (seen.includes ('/_kit/mark.js'), true)
+  const pageRes = await app.fetch (new Request ('http://x/'), env, quiet)
+  assert.ok ((await pageRes.text ()).includes ('page'))
+  assert.deepStrictEqual (seen.includes ('/'), false)
+})
+
 test ('kit/workers — stale reaches a listener through KitLive', async () => {
   const sockets: FakeSocket[] = []
   const live = new KitLive (stateWith (sockets), {})
@@ -330,7 +363,7 @@ test ('kit/workers — someone else\'s /live does not become a socket', async ()
     assert.deepStrictEqual (latest, undefined)
   }))
 
-test ('kit/publish — chunks go into assets, and the record stays beside them', () =>
+test ('kit/stage — chunks go into assets, and the record stays beside them', () =>
   inDir (async (root) => {
     const chunks = `${root}/chunks`
     const files = `${root}/static`
@@ -355,7 +388,7 @@ test ('kit/publish — chunks go into assets, and the record stays beside them',
     await writeText (`${files}/img/lamp.svg`, '<svg/>')
     await writeText (`${files}/notes.log`, 'do not serve')
 
-    const laid = await publish ({
+    const laid = await stage ({
       outDir: chunks,
       to,
       assets: {
@@ -379,6 +412,7 @@ test ('kit/publish — chunks go into assets, and the record stays beside them',
     assert.deepStrictEqual (written.manifest.counter, '/_kit/counter-abc.js')
     assert.deepStrictEqual (written.styleIds, ['one'])
     assert.deepStrictEqual (written.data, { '/': { n: 1 } })
+    assert.deepStrictEqual (written.files, '/static/')
     assert.deepStrictEqual (laid.assets, `${to}/assets`)
   }))
 
@@ -396,7 +430,7 @@ test ('kit/build — without outDir the chunks go to .kit, not into the assets',
     }
   }))
 
-test ('kit/publish — a chunk directory inside the assets is copied once', () =>
+test ('kit/stage — a chunk directory inside the assets is copied once', () =>
   inDir (async (root) => {
     const files = `${root}/static`
     const chunks = `${files}/_kit`
@@ -417,7 +451,7 @@ test ('kit/publish — a chunk directory inside the assets is copied once', () =
     await writeText (`${chunks}/counter-abc.js`, 'console.log(1)')
     await writeText (`${files}/img/lamp.svg`, '<svg/>')
 
-    await publish ({ outDir: chunks, to, assets: { dir: files } })
+    await stage ({ outDir: chunks, to, assets: { dir: files } })
 
     assert.deepStrictEqual (
       await readText (`${to}/assets/_kit/counter-abc.js`),
@@ -430,17 +464,3 @@ test ('kit/publish — a chunk directory inside the assets is copied once', () =
     await assert.rejects (() => stat (`${to}/assets/static/_kit`))
     await assert.rejects (() => stat (`${to}/assets/static/_kit/stale.js`))
   }))
-
-test ('kit/publish — wranglerConfig names the worker, the assets, and KitLive', () => {
-  const written = wranglerConfig ({ name: 'reading-room' })
-  assert.ok ((written).includes ('"name": "reading-room"'))
-  assert.ok ((written).includes ('"main": "./worker.ts"'))
-  assert.ok ((written).includes ('"binding": "ASSETS"'))
-  assert.ok ((written).includes ('"class_name": "KitLive"'))
-  assert.ok ((written).includes ('"storage": "sqlite"'))
-  assert.deepStrictEqual (
-    wranglerConfig ({ name: 'x', live: false }).includes ('KitLive'),
-    false,
-  )
-  assert.deepStrictEqual (written.includes ('nodejs_compat'), false)
-})

@@ -5,6 +5,8 @@ import * as F from '@algosail/plyfuture'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Handler, Reply, Route } from '../src/mod.ts'
+import { empty } from '../src/app/reply.ts'
+import { discover } from '../src/build/build.ts'
 import {
   answer,
   cookie,
@@ -30,8 +32,6 @@ import {
   withHeader,
   withStatus,
 } from '../src/mod.ts'
-import { discover } from '../src/nodejs.ts'
-import { empty } from '../src/reply.ts'
 import { error, routes, state } from './fixture/app.ts'
 import './fixture/islands/desk.ts'
 import './fixture/islands/mark.ts'

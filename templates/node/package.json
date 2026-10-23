@@ -1,0 +1,17 @@
+{
+  "name": "room-node",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node dev.ts",
+    "build": "node build.ts",
+    "start": "node server.ts"
+  },
+  "dependencies": {
+    "@algosail/plydom": "^0.1.1",
+    "@algosail/plykit": "^0.1.2"
+  }
+}
