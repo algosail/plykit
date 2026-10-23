@@ -92,7 +92,7 @@ it is needed.
 | field | what for |
 | --- | --- |
 | `routes` | pages, endpoints, nested lists after `layout` |
-| `state` | `(request) => Future<S>`. Required when the config has a state type |
+| `state` | `(request) => Future` of the context's state. Required when that state is not `unknown` |
 | `through` | middleware from the outside in: the first wraps the rest |
 | `ahead` | replies that one `Request` is enough for. The first to say a reply wins |
 | `lang` | the document language, a string or a function of the context |
@@ -1069,9 +1069,12 @@ and the free channel on `ctx.live`. `load`, middleware, and handlers read
 them. `state(request)` still sees only the request: the route context is
 built after it.
 
-The binding type is set on the route,
-`const home: Route<State, Env> = page(...)`, and on the config,
-`Config<State, Env>`. `worker` infers both from the application. Kit reads
+The binding type is set once, `type App = Context<State, Env>`,
+and passed on,
+`const home: Route<App> = page(...)`, and on the config, `Config<App>`.
+`page` and `layout` take it first, and the data second when there is any:
+`page<App>`, `layout<App, Banner>`.
+`worker` infers it from the application. Kit reads
 `ASSETS` and `KIT_LIVE` itself. They do not have to be in `Env`. A D1 sample
 is in the [platform document](docs/cloudflare.md).
 

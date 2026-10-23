@@ -98,21 +98,21 @@ const asTokenCookie = (strict: Strictness): (token: string) => Cookie =>
   ])
 
 /** A request, the token it will use, and whether that token is brand new. */
-type Guarded<S, E> = {
+type Guarded<C extends Context> = {
   readonly strict: Strictness
-  readonly ctx: Context<S, E>
+  readonly ctx: C
   readonly token: string
   readonly minted: boolean
 }
 
-const guarding = (strict: Strictness) => <S, E>(ctx: Context<S, E>): Guarded<S, E> =>
+const guarding = (strict: Strictness) => <C extends Context>(ctx: C): Guarded<C> =>
   P.maybe_ (
-    (): Guarded<S, E> => ({ strict, ctx, token: fresh (), minted: true }),
+    (): Guarded<C> => ({ strict, ctx, token: fresh (), minted: true }),
   ) (
-    (token: string): Guarded<S, E> => ({ strict, ctx, token, minted: false }),
+    (token: string): Guarded<C> => ({ strict, ctx, token, minted: false }),
   ) (carried (ctx.request))
 
-const onwardFrom = <S, E>(at: Guarded<S, E>): Context<S, E> => {
+const onwardFrom = <C extends Context>(at: Guarded<C>): C => {
   const headers = new Headers (at.ctx.request.headers)
   headers.set (ISSUED, at.token)
   return P.set ('request') (
@@ -120,24 +120,24 @@ const onwardFrom = <S, E>(at: Guarded<S, E>): Context<S, E> => {
   ) (at.ctx)
 }
 
-const remembering = <S, E>(at: Guarded<S, E>): (reply: Reply) => Reply =>
+const remembering = <C extends Context>(at: Guarded<C>): (reply: Reply) => Reply =>
   P.onlyIf (at.minted) (
     Rp.cookie (asTokenCookie (at.strict) (at.token))<Reply>,
   )
 
-const isSafe = <S, E>(at: Guarded<S, E>): boolean =>
+const isSafe = <C extends Context>(at: Guarded<C>): boolean =>
   P.elem (at.ctx.request.method) (SAFE)
 
 const isForm = (type: string): boolean =>
   type.includes ('form-urlencoded') || type.includes ('multipart/form-data')
 
-const isFormBody = <S, E>(at: Guarded<S, E>): boolean =>
+const isFormBody = <C extends Context>(at: Guarded<C>): boolean =>
   isForm (P.defaultTo ('') (at.ctx.request.headers.get ('content-type')))
 
-const inHeader = <S, E>(at: Guarded<S, E>): P.Maybe<string> =>
+const inHeader = <C extends Context>(at: Guarded<C>): P.Maybe<string> =>
   P.fromNullable (at.ctx.request.headers.get (CSRF_HEADER))
 
-const inFields = <S, E>(at: Guarded<S, E>): F.Future<unknown, P.Maybe<string>> =>
+const inFields = <C extends Context>(at: Guarded<C>): F.Future<unknown, P.Maybe<string>> =>
   P.map (
     P.either ((_e: unknown): P.Maybe<string> => P.nothing<string> ()) (
       (fields: FormData) => P.fromPredicate (P.isString) (fields.get (CSRF_FIELD)),
@@ -148,10 +148,10 @@ const inFields = <S, E>(at: Guarded<S, E>): F.Future<unknown, P.Maybe<string>> =
     ),
   )
 
-const inBody = <S, E>(at: Guarded<S, E>): F.Future<unknown, P.Maybe<string>> =>
+const inBody = <C extends Context>(at: Guarded<C>): F.Future<unknown, P.Maybe<string>> =>
   P.boolean (F.resolve (P.nothing<string> ())) (inFields (at)) (isFormBody (at))
 
-const shownIn = <S, E>(at: Guarded<S, E>): F.Future<unknown, P.Maybe<string>> =>
+const shownIn = <C extends Context>(at: Guarded<C>): F.Future<unknown, P.Maybe<string>> =>
   P.maybe_ (
     () => inBody (at),
   ) (
@@ -165,40 +165,40 @@ const refuseUnless = (ok: boolean): (why: () => Reply) => P.Maybe<Reply> =>
   refuseIf (!ok)
 
 /** One reason an unsafe request is not this site's. */
-type Reason<S, E> = (at: Guarded<S, E>) => P.Maybe<Reply>
+type Reason<C extends Context> = (at: Guarded<C>) => P.Maybe<Reply>
 
-const noToken = <S, E>(at: Guarded<S, E>): P.Maybe<Reply> =>
+const noToken = <C extends Context>(at: Guarded<C>): P.Maybe<Reply> =>
   refuseIf (at.minted) (() =>
     Rp.cookie (asTokenCookie (at.strict) (at.token)) (
       Rp.failed (403) ('no csrf token: the page was opened too long ago'),
     ),
   )
 
-const saysElsewhere = <S, E>(at: Guarded<S, E>): boolean =>
+const saysElsewhere = <C extends Context>(at: Guarded<C>): boolean =>
   P.any ((origin: string) => origin !== at.ctx.url.origin) (
     P.fromNullable (at.ctx.request.headers.get ('origin')),
   )
 
-const checksOrigin = <S, E>(at: Guarded<S, E>): boolean => at.strict.checkOrigin
+const checksOrigin = <C extends Context>(at: Guarded<C>): boolean => at.strict.checkOrigin
 
-const otherSite = <S, E>(at: Guarded<S, E>): P.Maybe<Reply> =>
+const otherSite = <C extends Context>(at: Guarded<C>): P.Maybe<Reply> =>
   refuseIf (
-    P.allPass ([P.predicate (checksOrigin<S, E>), P.predicate (saysElsewhere<S, E>)]) (
+    P.allPass ([P.predicate (checksOrigin<C>), P.predicate (saysElsewhere<C>)]) (
       at,
     ),
   ) (() => Rp.failed (403) ('the request came from another site'))
 
-const cheaply = <S, E>(at: Guarded<S, E>): P.Maybe<Reply> =>
-  P.findMap ((reason: Reason<S, E>) => reason (at)) ([noToken<S, E>, otherSite<S, E>])
+const cheaply = <C extends Context>(at: Guarded<C>): P.Maybe<Reply> =>
+  P.findMap ((reason: Reason<C>) => reason (at)) ([noToken<C>, otherSite<C>])
 
-const mismatched = <S, E>(at: Guarded<S, E>): F.Future<unknown, P.Maybe<Reply>> =>
+const mismatched = <C extends Context>(at: Guarded<C>): F.Future<unknown, P.Maybe<Reply>> =>
   P.map ((shown: P.Maybe<string>) =>
     refuseUnless (P.any (matches (at.token)) (shown)) (() =>
       Rp.failed (403) ('the csrf token did not match'),
     ),
   ) (shownIn (at))
 
-const refusedAt = <S, E>(at: Guarded<S, E>): F.Future<unknown, P.Maybe<Reply>> =>
+const refusedAt = <C extends Context>(at: Guarded<C>): F.Future<unknown, P.Maybe<Reply>> =>
   P.maybe_ (
     () => mismatched (at),
   ) (
@@ -206,11 +206,11 @@ const refusedAt = <S, E>(at: Guarded<S, E>): F.Future<unknown, P.Maybe<Reply>> =
   ) (cheaply (at))
 
 const passing =
-  <S, E>(next: Answering<S, E>) => (at: Guarded<S, E>): F.Future<unknown, Reply> =>
+  <C extends Context>(next: Answering<C>) => (at: Guarded<C>): F.Future<unknown, Reply> =>
     P.map (remembering (at)) (next (onwardFrom (at)))
 
 const checking =
-  <S, E>(next: Answering<S, E>) => (at: Guarded<S, E>): F.Future<unknown, Reply> =>
+  <C extends Context>(next: Answering<C>) => (at: Guarded<C>): F.Future<unknown, Reply> =>
     P.chain (
       P.maybe_ (
         () => passing (next) (at),
@@ -227,14 +227,14 @@ const checking =
  * app ({ routes, through: [guard (), ...through] })
  * ```
  */
-export function guard<S = unknown, E = unknown>(
+export function guard<C extends Context = Context>(
   options: GuardOptions = {},
-): Middleware<S, E> {
+): Middleware<C> {
   const guarded = guarding (strictnessOf (options))
-  return (next: Answering<S, E>): Answering<S, E> =>
+  return (next: Answering<C>): Answering<C> =>
     P.pipe ([
-      guarded<S, E>,
-      P.ifElse<Guarded<S, E>> (isSafe) (passing (next)) (
+      guarded<C>,
+      P.ifElse<Guarded<C>> (isSafe) (passing (next)) (
         checking (next),
       ),
     ])

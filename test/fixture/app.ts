@@ -1,7 +1,7 @@
 import * as P from '@algosail/ply'
 import type { Config, DocumentHead, Item, Routes } from '../../src/mod.ts'
 import type { Note } from './records/notes.ts'
-import type { State } from './state.ts'
+import type { App } from './state.ts'
 import { feed, robots, sitemap } from '../../src/mod.ts'
 import { error } from './layouts/error.ts'
 import { shell } from './layouts/room.ts'
@@ -30,7 +30,7 @@ const asItems = (notes: readonly Note[]): readonly Item[] =>
   })) (notes)
 
 /** What readers wrote, for whoever would rather be told than come back. */
-const notesFeed = feed<State> ({
+const notesFeed = feed<App> ({
   origin: ORIGIN,
   title: 'Reading Room · in the margins',
   pattern: '/feed.xml',
@@ -38,14 +38,14 @@ const notesFeed = feed<State> ({
 })
 
 /** Every route in the room. */
-export const routes: Routes<State> = [
+export const routes: Routes<App> = [
   shell ([home, about, me, desk, book, onShelf ([shelf])]),
   catalogue,
   notes,
   reader,
   notesFeed,
-  sitemap<State> ({ origin: ORIGIN, routes: [home, about] }),
-  robots<State> ({ sitemap: `${ORIGIN}/sitemap.xml` }),
+  sitemap<App> ({ origin: ORIGIN, routes: [home, about] }),
+  robots<App> ({ sitemap: `${ORIGIN}/sitemap.xml` }),
 ]
 
 /** Default links. A page or a layout that sets `link` replaces them. */
@@ -58,11 +58,11 @@ export const head: DocumentHead = {
 
 export { error } from './layouts/error.ts'
 export { state } from './state.ts'
-export type { State } from './state.ts'
+export type { App, State } from './state.ts'
 export { through } from './middleware.ts'
 
 /** The room itself. */
-const application: Config<State> = {
+const application: Config<App> = {
   routes,
   error,
   head,

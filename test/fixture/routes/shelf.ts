@@ -3,7 +3,7 @@ import * as P from '@algosail/ply'
 import * as H from '@algosail/plydom/h'
 import type { Loaded, Route } from '../../../src/mod.ts'
 import type { Book, Shelf } from '../records/books.ts'
-import type { State } from '../state.ts'
+import type { App } from '../state.ts'
 import type { Row } from '../ui/listing.ts'
 import { data, failed, page, href as routeHref } from '../../../src/mod.ts'
 import { read } from '../answers.ts'
@@ -45,7 +45,7 @@ const asRow = (b: Book): Row => ({
   beside: `· ${b.author}, ${b.year}`,
 })
 
-export const shelf: Route<State> = page ({
+export const shelf: Route<App> = page ({
   pattern: PATTERN,
   load: (ctx) => read (asked (ctx.params.slug)) (asRead (ctx.params.slug)),
   head: (ctx) => ({

@@ -1,7 +1,11 @@
 import type * as F from '@algosail/plyfuture'
 import * as P from '@algosail/ply'
+import type { Context } from '../../src/mod.ts'
 import type { Reader } from './records/readers.ts'
 import * as Session from './session.ts'
+
+/** The one context this app hands to every route, layout and middleware. */
+export type App = Context<State>
 
 /** What this app prepares for each request. */
 export type State = {

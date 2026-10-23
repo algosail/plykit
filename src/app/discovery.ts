@@ -1,6 +1,6 @@
 import * as P from '@algosail/ply'
 import * as F from '@algosail/plyfuture'
-import type { Reply, Route, Routes } from './types.ts'
+import type { Context, Reply, Route, Routes } from './types.ts'
 import { escapeAttribute, escapeText } from '../document/html.ts'
 import { addressesOf } from './data.ts'
 import * as Rp from './reply.ts'
@@ -65,12 +65,12 @@ export type About = {
 export type Place = About & { readonly loc: string }
 
 /** What goes in a sitemap and where it is served. */
-export type SitemapOptions<S = unknown> = {
+export type SitemapOptions<C extends Context = Context> = {
   /** The site's public origin — `https://example.com`. */
   readonly origin: string
   readonly pattern?: string
   /** The routes to list. */
-  readonly routes?: Routes<S>
+  readonly routes?: Routes<C>
   /** Addresses to add that no route stands for. */
   readonly also?: () => F.Future<unknown, readonly Place[]>
   /** What to say about each address the routes gave. */
@@ -81,41 +81,41 @@ export type SitemapOptions<S = unknown> = {
 
 const SITEMAP = '/sitemap.xml'
 
-const isPage = <S>(route: Route<S>): boolean =>
-  P.cases<Route<S>, boolean> ({
+const isPage = <C extends Context>(route: Route<C>): boolean =>
+  P.cases<Route<C>, boolean> ({
     page: P.K (true),
     endpoint: P.K (false),
   }) (route)
 
-const saysWhere = <S>(route: Route<S>): boolean =>
+const saysWhere = <C extends Context>(route: Route<C>): boolean =>
   route.still.paths !== undefined
 
-const capturing = <S>(route: Route<S>): boolean => R.hasCaptures (route.pattern)
+const capturing = <C extends Context>(route: Route<C>): boolean => R.hasCaptures (route.pattern)
 
-const isNameable = <S>(route: Route<S>): boolean =>
+const isNameable = <C extends Context>(route: Route<C>): boolean =>
   P.anyPass ([
-    P.predicateNot (P.predicate (capturing<S>)),
-    P.predicate (saysWhere<S>),
+    P.predicateNot (P.predicate (capturing<C>)),
+    P.predicate (saysWhere<C>),
   ]) (route)
 
-const listed = <S>(routes: Routes<S>): readonly Route<S>[] =>
-  P.filter (P.allPass ([P.predicate (isPage<S>), P.predicate (isNameable<S>)])) (
+const listed = <C extends Context>(routes: Routes<C>): readonly Route<C>[] =>
+  P.filter (P.allPass ([P.predicate (isPage<C>), P.predicate (isNameable<C>)])) (
     flat (routes),
   )
 
-const addressesIn = <S>(
-  route: Route<S>,
+const addressesIn = <C extends Context>(
+  route: Route<C>,
 ): F.Future<unknown, readonly string[]> => F.attemptP (() => addressesOf (route))
 
 const flattened = (all: readonly (readonly string[])[]): readonly string[] =>
   P.join (all)
 
-const addressesFor = <S>(
-  routes: Routes<S>,
+const addressesFor = <C extends Context>(
+  routes: Routes<C>,
 ): F.Future<unknown, readonly string[]> =>
   P.map (flattened) (
     F.parallel (Number.POSITIVE_INFINITY) (
-      P.map (addressesIn<S>) (listed<S> (routes)),
+      P.map (addressesIn<C>) (listed<C> (routes)),
     ),
   )
 
@@ -134,8 +134,8 @@ const asPlaces =
     F.parallel (Number.POSITIVE_INFINITY) (P.map (placeIn (about)) (paths))
 
 const placesIn =
-  <S>(about: (path: string) => F.Future<unknown, About>) =>
-  (routes: Routes<S>): F.Future<unknown, readonly Place[]> =>
+  <C extends Context>(about: (path: string) => F.Future<unknown, About>) =>
+  (routes: Routes<C>): F.Future<unknown, readonly Place[]> =>
     P.chain (asPlaces (about)) (addressesFor (routes))
 
 const aboutIn = (place: Place): string =>
@@ -167,17 +167,17 @@ const noAbout = F.resolve<unknown, About> ({})
 
 const nothingAbout = (_: string): F.Future<unknown, About> => noAbout
 
-const fromRoutesIn = <S>(
-  options: SitemapOptions<S>,
+const fromRoutesIn = <C extends Context>(
+  options: SitemapOptions<C>,
 ): F.Future<unknown, readonly Place[]> =>
   P.maybe_ (
     () => noPlaces,
   ) (
-    placesIn<S> (P.defaultTo (nothingAbout) (options.about)),
+    placesIn<C> (P.defaultTo (nothingAbout) (options.about)),
   ) (P.fromNullable (options.routes))
 
-const alsoIn = <S>(
-  options: SitemapOptions<S>,
+const alsoIn = <C extends Context>(
+  options: SitemapOptions<C>,
 ): F.Future<unknown, readonly Place[]> =>
   P.maybe_ (
     () => noPlaces,
@@ -189,8 +189,8 @@ const andAlso =
   (fromRoutes: readonly Place[]) =>
   (also: readonly Place[]): readonly Place[] => P.concat (fromRoutes) (also)
 
-const placesFor = <S>(
-  options: SitemapOptions<S>,
+const placesFor = <C extends Context>(
+  options: SitemapOptions<C>,
 ): F.Future<unknown, readonly Place[]> =>
   P.lift2 (andAlso) (fromRoutesIn (options)) (alsoIn (options))
 
@@ -203,8 +203,8 @@ const placesFor = <S>(
  * export const routes = [...pages, sitemap ({ origin: 'https://x.dev', routes: pages })]
  * ```
  */
-export function sitemap<S = unknown>(options: SitemapOptions<S>): Route<S> {
-  return endpoint<S> ({
+export function sitemap<C extends Context = Context>(options: SitemapOptions<C>): Route<C> {
+  return endpoint<C> ({
     pattern: P.defaultTo (SITEMAP) (options.pattern),
     static: options.static !== false,
     on: {
@@ -298,8 +298,8 @@ const asChannel = (options: FeedOptions) => (items: readonly Item[]): string =>
  * })
  * ```
  */
-export function feed<S = unknown>(options: FeedOptions): Route<S> {
-  return endpoint<S> ({
+export function feed<C extends Context = Context>(options: FeedOptions): Route<C> {
+  return endpoint<C> ({
     pattern: P.defaultTo (FEED) (options.pattern),
     static: options.static !== false,
     on: {
@@ -359,9 +359,9 @@ const asRobots = (options: RobotsOptions): string =>
  * robots ({ disallow: ['/admin'], sitemap: 'https://x.dev/sitemap.xml' })
  * ```
  */
-export function robots<S = unknown>(options: RobotsOptions = {}): Route<S> {
+export function robots<C extends Context = Context>(options: RobotsOptions = {}): Route<C> {
   const said = asRobots (options)
-  return endpoint<S> ({
+  return endpoint<C> ({
     pattern: P.defaultTo (ROBOTS) (options.pattern),
     static: options.static !== false,
     on: { GET: (): F.Future<unknown, Reply> => F.resolve (plain (said)) },

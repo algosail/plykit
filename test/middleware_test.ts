@@ -3,7 +3,7 @@ import * as H from '@algosail/plydom/h'
 import * as F from '@algosail/plyfuture'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { Middleware, Reply, Route } from '../src/mod.ts'
+import type { Context, Middleware, Reply, Route } from '../src/mod.ts'
 import { discover } from '../src/build/build.ts'
 import {
   after,
@@ -42,7 +42,7 @@ const note = (line: string): void => {
 
 type Who = { readonly who: string }
 
-const said: Route<Who>[] = [
+const said: Route<Context<Who>>[] = [
   page ({
     pattern: '/said',
     load: (ctx) => {
@@ -57,7 +57,7 @@ const said: Route<Who>[] = [
   }),
 ]
 
-const around = (name: string): Middleware<Who> => (next) => (ctx) => {
+const around = (name: string): Middleware<Context<Who>> => (next) => (ctx) => {
   note (`${name} →`)
   return P.map ((reply: Reply) => {
     note (`${name} ←`)
@@ -65,7 +65,7 @@ const around = (name: string): Middleware<Who> => (next) => (ctx) => {
   }) (next (ctx))
 }
 
-const app = (middlewares: readonly Middleware<Who>[]) =>
+const app = (middlewares: readonly Middleware<Context<Who>>[]) =>
   handler ({
     routes: said,
     state: () => F.resolve ({ who: 'anya' }),
@@ -86,7 +86,7 @@ test ('kit/middleware — the first in the list is the outside', async () => {
 
 test ('kit/middleware — did not call next — the route did not run', async () => {
   seen = []
-  const stops: Middleware<Who> = () => () => F.resolve (text ('instead'))
+  const stops: Middleware<Context<Who>> = () => () => F.resolve (text ('instead'))
   const res = await app ([stops, around ('inside')]) (asking ('/said'))
 
   assert.deepStrictEqual (await res.text (), 'instead')
@@ -110,7 +110,7 @@ test ('kit/middleware — sees the page already drawn and changes it', async () 
 
 test ('kit/middleware — watch sees both sides and changes nothing', async () => {
   seen = []
-  const looked: Middleware<Who> = watch ((ctx) => {
+  const looked: Middleware<Context<Who>> = watch ((ctx) => {
     note (`entered ${ctx.url.pathname} ${ctx.state.who}`)
     const at = ctx.request.method
     return (reply: Reply) =>
@@ -124,7 +124,7 @@ test ('kit/middleware — watch sees both sides and changes nothing', async () =
 
 test ('kit/middleware/stack — a group under one name', async () => {
   seen = []
-  const both: Middleware<Who> = stack ([
+  const both: Middleware<Context<Who>> = stack ([
     around ('outer'),
     around ('inner'),
   ])
@@ -139,7 +139,7 @@ test ('kit/middleware/stack — a group under one name', async () => {
 })
 
 test ('kit/middleware — when lets only its own through', async () => {
-  const only: Middleware<Who> = whenRequest ((ctx) =>
+  const only: Middleware<Context<Who>> = whenRequest ((ctx) =>
     P.startsWith ('/api') (ctx.url.pathname),
   ) (after (withHeader ('x-api') ('yes')))
 
@@ -156,7 +156,7 @@ test ('kit/middleware/only — by the routes themselves, not by the path string'
   const page = said[0]
   const api = said[1]
 
-  const mine: Middleware<Who> = only ([api]) (
+  const mine: Middleware<Context<Who>> = only ([api]) (
     after (withHeader ('x-only') ('yes')),
   )
 
@@ -176,7 +176,7 @@ test ('kit/middleware/only — by the routes themselves, not by the path string'
 test ('kit/middleware/only — one route can go without a list', async () => {
   const api = said[1]
 
-  const mine: Middleware<Who> = only (api) (after (withHeader ('x-one') ('yes')))
+  const mine: Middleware<Context<Who>> = only (api) (after (withHeader ('x-one') ('yes')))
 
   const onApi = await app ([mine]) (asking ('/api/said'))
   const onPage = await app ([mine]) (asking ('/said'))
@@ -191,7 +191,7 @@ test ('kit/middleware/only — a filter that did not match lets the rest through
   const page = said[0]
   const api = said[1]
 
-  const both: readonly Middleware<Who>[] = [
+  const both: readonly Middleware<Context<Who>>[] = [
     only (page) (after (withHeader ('x-first') ('yes'))),
     only (api) (after (withHeader ('x-second') ('yes'))),
   ]
@@ -205,7 +205,7 @@ test ('kit/middleware/only — a filter that did not match lets the rest through
 
 test ('kit/middleware — before replaces the context for everything after it', async () => {
   seen = []
-  const asBorya: Middleware<Who> = before ((ctx) => ({
+  const asBorya: Middleware<Context<Who>> = before ((ctx) => ({
     ...ctx,
     state: { who: 'borya' },
   }))
@@ -216,7 +216,7 @@ test ('kit/middleware — before replaces the context for everything after it', 
 })
 
 test ('kit/middleware — a refusal is drawn for whoever asked', async () => {
-  const refuses: Middleware<Who> = () => () => F.resolve (failed (401) ('who are you'))
+  const refuses: Middleware<Context<Who>> = () => () => F.resolve (failed (401) ('who are you'))
 
   const page = await handler ({
     routes: said,

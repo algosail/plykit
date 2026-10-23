@@ -18,9 +18,9 @@ import * as Rt from './router.ts'
 import { HttpError, messageOf } from './types.ts'
 
 /** A page, what it loaded, and the request it answers. */
-export type Resolved<S = unknown, E = unknown> = {
-  readonly route: PageRoute<Json, S, E>
-  readonly ctx: Context<S, E>
+export type Resolved<C extends Context = Context> = {
+  readonly route: PageRoute<C, Json>
+  readonly ctx: C
   readonly data: Json
   /** What each layout read, outermost first — one entry per layout. */
   readonly layoutData: readonly Json[]
@@ -28,21 +28,21 @@ export type Resolved<S = unknown, E = unknown> = {
 }
 
 /** Where a request is pointed, and at what — before anything has run. */
-export type Aimed<S = unknown, E = unknown> = {
-  readonly ctx: Context<S, E>
-  readonly route: P.Maybe<Route<S, E>>
+export type Aimed<C extends Context = Context> = {
+  readonly ctx: C
+  readonly route: P.Maybe<Route<C>>
 }
 
 /** The two ways answering can end: a page still to be drawn, or a reply that is already what goes on the wire. */
-export type Outcome<S = unknown, E = unknown> =
-  | { readonly tag: 'resolved'; readonly resolved: Resolved<S, E> }
+export type Outcome<C extends Context = Context> =
+  | { readonly tag: 'resolved'; readonly resolved: Resolved<C> }
   | { readonly tag: 'replied'; readonly reply: Reply }
 
 const RENDERED = ['GET', 'HEAD']
 
-const replied = <S, E>(reply: Reply): Outcome<S, E> => ({ tag: 'replied', reply })
+const replied = <C extends Context>(reply: Reply): Outcome<C> => ({ tag: 'replied', reply })
 
-const refused = <S, E>(error: HttpError): Outcome<S, E> =>
+const refused = <C extends Context>(error: HttpError): Outcome<C> =>
   replied ({ tag: 'failure', error, headers: {}, cookies: [] })
 
 const isHttpError = (err: unknown): err is HttpError => err instanceof HttpError
@@ -55,39 +55,39 @@ const asHttpError = (err: unknown): HttpError =>
   ) (P.fromPredicate (isHttpError) (err))
 
 /** A request and the route that claims it. */
-type Asked<S, E, R = Route<S, E>> = {
-  readonly ctx: Context<S, E>
+type Asked<C extends Context, R = Route<C>> = {
+  readonly ctx: C
   readonly route: R
 }
 
 /** The same, narrowed to the one kind of route that draws. */
-type Page<S, E> = Asked<S, E, PageRoute<Json, S, E>>
+type Page<C extends Context> = Asked<C, PageRoute<C, Json>>
 
 const asPage =
-  <S, E>(ctx: Context<S, E>) => (route: PageRoute<Json, S, E>): Page<S, E> => ({
+  <C extends Context>(ctx: C) => (route: PageRoute<C, Json>): Page<C> => ({
     ctx,
     route,
   })
 
 const HEAD_THEN_GET = ['HEAD', 'GET']
 
-const triedBy = <S, E>(at: Asked<S, E>): readonly string[] =>
+const triedBy = <C extends Context>(at: Asked<C>): readonly string[] =>
   P.boolean<readonly string[]> ([at.ctx.request.method]) (HEAD_THEN_GET) (
     at.ctx.request.method === 'HEAD' && at.route.tag === 'page',
   )
 
-const handlerIn = <S, E>(at: Asked<S, E>): P.Maybe<PageHandler<Json, S, E>> =>
+const handlerIn = <C extends Context>(at: Asked<C>): P.Maybe<PageHandler<C, Json>> =>
   P.findMap ((method: string) =>
-    P.lookup (method) (at.route.on as Readonly<P.StrMap<PageHandler<Json, S, E>>>),
+    P.lookup (method) (at.route.on as Readonly<P.StrMap<PageHandler<C, Json>>>),
   ) (triedBy (at))
 
-const renderedBy = <S, E>(route: Route<S, E>): readonly string[] =>
-  P.cases<Route<S, E>, readonly string[]> ({
+const renderedBy = <C extends Context>(route: Route<C>): readonly string[] =>
+  P.cases<Route<C>, readonly string[]> ({
     page: P.K (RENDERED),
     endpoint: P.K<readonly string[]> ([]),
   }) (route)
 
-const allows = <S, E>(route: Route<S, E>): readonly string[] =>
+const allows = <C extends Context>(route: Route<C>): readonly string[] =>
   P.sort (P.nub (P.concat (P.sortedKeys (route.on)) (renderedBy (route))))
 
 /** What a page read, and what the chrome around it read — apart. */
@@ -96,17 +96,17 @@ type Read = {
   readonly page: Loaded<Json>
 }
 
-const layoutLoads = <S, E>(
-  at: Page<S, E>,
+const layoutLoads = <C extends Context>(
+  at: Page<C>,
 ): readonly F.Future<unknown, Loaded<Json>>[] =>
-  P.map ((one: Chrome<S, E>) => one.load (at.ctx)) (at.route.layouts)
+  P.map ((one: Chrome<C>) => one.load (at.ctx)) (at.route.layouts)
 
-const loadLayouts = <S, E>(
-  at: Page<S, E>,
+const loadLayouts = <C extends Context>(
+  at: Page<C>,
 ): F.Future<unknown, readonly Loaded<Json>[]> =>
   F.parallel (Number.POSITIVE_INFINITY) (layoutLoads (at))
 
-const loadAll = <S, E>(at: Page<S, E>): F.Future<unknown, Read> =>
+const loadAll = <C extends Context>(at: Page<C>): F.Future<unknown, Read> =>
   P.ap (
     P.map ((layouts: readonly Loaded<Json>[]) => (page: Loaded<Json>): Read => ({
       layouts,
@@ -139,7 +139,7 @@ const statusOf = P.cases<Loaded<Json>, number> ({
   failure: P.K (200),
 })
 
-const asResolved = <S, E>(at: Page<S, E>) => (read: Read): Outcome<S, E> => ({
+const asResolved = <C extends Context>(at: Page<C>) => (read: Read): Outcome<C> => ({
   tag: 'resolved',
   resolved: {
     route: at.route,
@@ -150,15 +150,15 @@ const asResolved = <S, E>(at: Page<S, E>) => (read: Read): Outcome<S, E> => ({
   },
 })
 
-const drawn = <S, E>(at: Page<S, E>) => (read: Read): Outcome<S, E> =>
+const drawn = <C extends Context>(at: Page<C>) => (read: Read): Outcome<C> =>
   P.maybe_ (
     () => asResolved (at) (read),
   ) (
-    replied<S, E>,
+    replied<C>,
   ) (refusalIn (everythingIn (read)))
 
-const asRefused = <S, E>(err: unknown): F.Future<unknown, Outcome<S, E>> =>
-  F.resolve (refused<S, E> (asHttpError (err)))
+const asRefused = <C extends Context>(err: unknown): F.Future<unknown, Outcome<C>> =>
+  F.resolve (refused<C> (asHttpError (err)))
 
 const attempted = <A>(
   produce: () => F.Future<unknown, A>,
@@ -167,13 +167,13 @@ const attempted = <A>(
     F.attemptP (() => F.promise (produce ())),
   )
 
-const outcomeOf = <A, S, E>(
-  onOk: (a: A) => F.Future<unknown, Outcome<S, E>>,
-): (produce: () => F.Future<unknown, A>) => F.Future<unknown, Outcome<S, E>> =>
-  P.pipe ([attempted, P.chain (P.either (asRefused<S, E>) (onOk))])
+const outcomeOf = <A, C extends Context>(
+  onOk: (a: A) => F.Future<unknown, Outcome<C>>,
+): (produce: () => F.Future<unknown, A>) => F.Future<unknown, Outcome<C>> =>
+  P.pipe ([attempted, P.chain (P.either (asRefused<C>) (onOk))])
 
-const notAllowed = <S, E>(at: Asked<S, E>): F.Future<unknown, Outcome<S, E>> =>
-  F.resolve (replied<S, E> (
+const notAllowed = <C extends Context>(at: Asked<C>): F.Future<unknown, Outcome<C>> =>
+  F.resolve (replied<C> (
     Rp.headers ({ allow: P.joinWith (', ') (allows (at.route)) }) (
       Rp.failed (405) (
         `${at.ctx.request.method} not allowed at ${at.route.pattern}`,
@@ -181,14 +181,14 @@ const notAllowed = <S, E>(at: Asked<S, E>): F.Future<unknown, Outcome<S, E>> =>
     ),
   ))
 
-const drawing = <S, E>(at: Page<S, E>): F.Future<unknown, Outcome<S, E>> =>
+const drawing = <C extends Context>(at: Page<C>): F.Future<unknown, Outcome<C>> =>
   outcomeOf ((read: Read) => F.resolve (drawn (at) (read))) (() => loadAll (at))
 
-const unhandled = <S, E>(at: Asked<S, E>): F.Future<unknown, Outcome<S, E>> =>
-  P.cases<Route<S, E>, F.Future<unknown, Outcome<S, E>>> ({
+const unhandled = <C extends Context>(at: Asked<C>): F.Future<unknown, Outcome<C>> =>
+  P.cases<Route<C>, F.Future<unknown, Outcome<C>>> ({
     page: P.pipe ([
       asPage (at.ctx),
-      P.boolean<(one: Page<S, E>) => F.Future<unknown, Outcome<S, E>>> (notAllowed) (
+      P.boolean<(one: Page<C>) => F.Future<unknown, Outcome<C>>> (notAllowed) (
         drawing,
       ) (
         P.elem (at.ctx.request.method) (RENDERED),
@@ -197,47 +197,47 @@ const unhandled = <S, E>(at: Asked<S, E>): F.Future<unknown, Outcome<S, E>> =>
     endpoint: () => notAllowed (at),
   }) (at.route)
 
-const asReplied = <S, E>(one: Reply): F.Future<unknown, Outcome<S, E>> =>
-  F.resolve (replied<S, E> (one))
+const asReplied = <C extends Context>(one: Reply): F.Future<unknown, Outcome<C>> =>
+  F.resolve (replied<C> (one))
 
 const drawnWith =
-  <S, E>(said: Loaded<Json>) => (at: Page<S, E>): F.Future<unknown, Outcome<S, E>> =>
+  <C extends Context>(said: Loaded<Json>) => (at: Page<C>): F.Future<unknown, Outcome<C>> =>
     P.map ((layouts: readonly Loaded<Json>[]) =>
       drawn (at) ({ layouts, page: said }),
     ) (loadLayouts (at))
 
-const noPageToDraw = <S, E>(): F.Future<unknown, Outcome<S, E>> =>
-  F.resolve (refused<S, E> (
+const noPageToDraw = <C extends Context>(): F.Future<unknown, Outcome<C>> =>
+  F.resolve (refused<C> (
     new HttpError (500, 'an endpoint answered with page data'),
   ))
 
-const fromSaid = <S, E>(
-  at: Asked<S, E>,
-): (said: Reply | Loaded<Json>) => F.Future<unknown, Outcome<S, E>> =>
-  P.cases<Reply | Loaded<Json>, F.Future<unknown, Outcome<S, E>>> ({
+const fromSaid = <C extends Context>(
+  at: Asked<C>,
+): (said: Reply | Loaded<Json>) => F.Future<unknown, Outcome<C>> =>
+  P.cases<Reply | Loaded<Json>, F.Future<unknown, Outcome<C>>> ({
     sent: asReplied,
     redirect: asReplied,
     failure: asReplied,
     data: (said) =>
-      P.cases<Route<S, E>, F.Future<unknown, Outcome<S, E>>> ({
+      P.cases<Route<C>, F.Future<unknown, Outcome<C>>> ({
         page: P.pipe ([asPage (at.ctx), drawnWith (said)]),
-        endpoint: noPageToDraw<S, E>,
+        endpoint: noPageToDraw<C>,
       }) (at.route),
   })
 
 const viaHandler =
-  <S, E>(at: Asked<S, E>) =>
-  (handler: PageHandler<Json, S, E>): F.Future<unknown, Outcome<S, E>> =>
+  <C extends Context>(at: Asked<C>) =>
+  (handler: PageHandler<C, Json>): F.Future<unknown, Outcome<C>> =>
     outcomeOf (fromSaid (at)) (() => handler (at.ctx))
 
-const forRoute = <S, E>(at: Asked<S, E>): F.Future<unknown, Outcome<S, E>> =>
+const forRoute = <C extends Context>(at: Asked<C>): F.Future<unknown, Outcome<C>> =>
   P.maybe_ (() => unhandled (at)) (viaHandler (at)) (handlerIn (at))
 
-const paramsOf = <S, E>(hit: P.Maybe<Rt.Match<S, E>>): Params =>
-  P.maybe_ (P.K<Params> ({})) ((one: Rt.Match<S, E>) => one.params) (hit)
+const paramsOf = <C extends Context>(hit: P.Maybe<Rt.Match<C>>): Params =>
+  P.maybe_ (P.K<Params> ({})) ((one: Rt.Match<C>) => one.params) (hit)
 
-const routeIdOf = <S, E>(hit: P.Maybe<Rt.Match<S, E>>): string =>
-  P.maybe_ (P.K ('')) ((one: Rt.Match<S, E>) => one.route.id) (hit)
+const routeIdOf = <C extends Context>(hit: P.Maybe<Rt.Match<C>>): string =>
+  P.maybe_ (P.K ('')) ((one: Rt.Match<C>) => one.route.id) (hit)
 
 /**
  * The context a route sees: the request, its state, and what the host passed along.
@@ -246,22 +246,22 @@ const routeIdOf = <S, E>(hit: P.Maybe<Rt.Match<S, E>>): string =>
  * contextOf (request, state, arrival, { slug: 'hello' }, '/blog/:slug')
  * ```
  */
-export const contextOf = <S, E>(
+export const contextOf = <C extends Context>(
   request: Request,
-  state: S,
-  from: Arrival<E> | undefined,
+  state: C['state'],
+  from: Arrival<C['env']> | undefined,
   params: Params,
   routeId: string,
-): Context<S, E> => ({
+): C => ({
   url: new URL (request.url),
   params,
   request,
   routeId,
   state,
-  env: (from?.env ?? undefined) as E,
+  env: (from?.env ?? undefined) as C['env'],
   live: from?.live ?? localLive,
   client: P.fromNullable (from?.remoteAddr?.hostname),
-})
+} as C)
 
 /**
  * Points a request at a route: builds the context every function will be handed and says what claims the path, if anything does.
@@ -272,15 +272,15 @@ export const contextOf = <S, E>(
  * // => { slug: 'hello' }
  * ```
  */
-export function aim<S, E = unknown>(
-  table: Rt.Table<S, E>,
-): (state: S) => (request: Request, from?: Arrival<E>) => Aimed<S, E> {
-  return (state: S) =>
-  (request: Request, from?: Arrival<E>): Aimed<S, E> => {
+export function aim<C extends Context = Context>(
+  table: Rt.Table<C>,
+): (state: C['state']) => (request: Request, from?: Arrival<C['env']>) => Aimed<C> {
+  return (state: C['state']) =>
+  (request: Request, from?: Arrival<C['env']>): Aimed<C> => {
     const hit = Rt.lookup (table) (new URL (request.url).pathname)
     return {
       ctx: contextOf (request, state, from, paramsOf (hit), routeIdOf (hit)),
-      route: P.map ((one: Rt.Match<S, E>) => one.route) (hit),
+      route: P.map ((one: Rt.Match<C>) => one.route) (hit),
     }
   }
 }
@@ -294,16 +294,16 @@ export function aim<S, E = unknown>(
  * // => { tag: 'resolved', resolved: { … } }
  * ```
  */
-export function run<S, E = unknown>(
-  route: P.Maybe<Route<S, E>>,
-): (ctx: Context<S, E>) => F.Future<unknown, Outcome<S, E>> {
-  return (ctx: Context<S, E>): F.Future<unknown, Outcome<S, E>> =>
+export function run<C extends Context = Context>(
+  route: P.Maybe<Route<C>>,
+): (ctx: C) => F.Future<unknown, Outcome<C>> {
+  return (ctx: C): F.Future<unknown, Outcome<C>> =>
     P.maybe_ (
       () =>
-        F.resolve (refused<S, E> (
+        F.resolve (refused<C> (
           new HttpError (404, `no route matches ${ctx.url.pathname}`),
         )),
     ) (
-      (one: Route<S, E>) => forRoute ({ ctx, route: one }),
+      (one: Route<C>) => forRoute ({ ctx, route: one }),
     ) (route)
 }

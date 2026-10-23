@@ -3,7 +3,7 @@ import * as H from '@algosail/plydom/h'
 import * as F from '@algosail/plyfuture'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { Route } from '../src/mod.ts'
+import type { Context, Route } from '../src/mod.ts'
 import { build, report } from '../src/build/build.ts'
 import { stat } from '../src/fs/disk.ts'
 import { DATA, data, layout, page, prepare } from '../src/mod.ts'
@@ -26,7 +26,7 @@ const posts = [{ id: 'first', title: 'First' }, {
 /**
  * Reads "slowly" and counts how many times it was called.
  */
-const post: Route<Who> = page<{ title: string }, Who> ({
+const post: Route<Context<Who>> = page<Context<Who>, { title: string }> ({
   pattern: '/blog/:slug',
   static: true,
   paths: () => F.resolve (P.map ((p: { id: string }) => ({ slug: p.id })) (posts)),
@@ -40,7 +40,7 @@ const post: Route<Who> = page<{ title: string }, Who> ({
   view: (ctx) => H.h1 ([`${ctx.data.title} for ${ctx.state.who}`]),
 })
 
-const chrome = layout<{ menu: string }, Who> ({
+const chrome = layout<Context<Who>, { menu: string }> ({
   load: () => F.resolve (data ({ menu: 'menu' })),
   view: (ctx) => H.div ({ class: 'shell' }, [ctx.data.menu, ctx.slot]),
 })

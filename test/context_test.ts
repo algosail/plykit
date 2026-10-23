@@ -37,9 +37,9 @@ const chrome = (
     ctx.slot,
   ])
 
-const shell = layout<Record<string, never>, Visitor> ({ view: chrome })
+const shell = layout<Context<Visitor>> ({ view: chrome })
 
-const whom: readonly Route<Visitor>[] = shell ([
+const whom: readonly Route<Context<Visitor>>[] = shell ([
   page ({
     pattern: '/who/:id',
     load: (ctx) => {
@@ -59,7 +59,7 @@ const whom: readonly Route<Visitor>[] = shell ([
   }),
 ])
 
-const failing: ErrorView<Visitor> = (ctx) =>
+const failing: ErrorView<Context<Visitor>> = (ctx) =>
   chrome ({
     ...ctx,
     slot: H.p ([

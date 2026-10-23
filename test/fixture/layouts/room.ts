@@ -5,7 +5,7 @@ import * as F from '@algosail/plyfuture'
 import type { Context, Loaded } from '../../../src/mod.ts'
 import type { Shelf } from '../records/books.ts'
 import type { Reader } from '../records/readers.ts'
-import type { State } from '../state.ts'
+import type { App, State } from '../state.ts'
 import type { Banner } from '../ui/header.ts'
 import { data, layout, live, navigation } from '../../../src/mod.ts'
 import { read } from '../answers.ts'
@@ -42,7 +42,7 @@ export const room =
     ])
 
 /** `shell([…])` puts this around the routes it is for. */
-export const shell = layout<Banner, State> ({
+export const shell = layout<App, Banner> ({
   load: (ctx) =>
     read (bannerOf (ctx.state.reader)) ((
       banner: Banner,

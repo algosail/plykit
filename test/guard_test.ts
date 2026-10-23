@@ -265,7 +265,7 @@ test ('kit/guard — the origin can be left unchecked', async () => {
 test ('kit/guard — over http the cookie has no Secure, or there is nowhere to keep it', async () => {
   const over = (secure: boolean): Promise<Response> => {
     const app = handler ({
-      routes: [page<Record<string, never>> ({
+      routes: [page ({
         pattern: '/',
         load: () => F.resolve (data ({})),
         view: () => H.p (['—']),

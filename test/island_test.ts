@@ -190,7 +190,7 @@ test ('kit/island/used — names in order and without repeats', () => {
 })
 
 const page = (pattern: string, body: () => D.Child): Route =>
-  routePage<Record<string, never>> ({
+  routePage ({
     pattern,
     load: () => F.resolve (data ({})),
     view: () => H.main ([body ()]),

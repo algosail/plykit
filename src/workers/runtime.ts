@@ -4,7 +4,7 @@ import type { Config } from '../app/config.ts'
 import type { Prebuilt } from '../app/data.ts'
 import type { ServerEvent } from '../app/events.ts'
 import type { Options as HandlerOptions } from '../app/server.ts'
-import type { Arrival, Live, Route } from '../app/types.ts'
+import type { Arrival, Context, Live, Route } from '../app/types.ts'
 import type { KitIsland, Manifest, Sheet } from '../build/build.ts'
 import { asksForLiveSocket, attachLive, frameOf, isLiveRoute, wantsUpgrade } from '../app/events.ts'
 import { CHUNK_BASE, FILE_BASE, withSlash } from '../app/prefixes.ts'
@@ -182,8 +182,8 @@ const dataIn = (record: WorkerRecord): P.Maybe<Prebuilt> =>
 const fileBase = (record: WorkerRecord): readonly string[] =>
   record.files == null || record.files === '' ? [] : [withSlash (record.files)]
 
-const basesIn = <S, E>(
-  config: Config<S, E>,
+const basesIn = <C extends Context>(
+  config: Config<C>,
   record: WorkerRecord,
 ): readonly string[] =>
   P.nub (
@@ -250,13 +250,13 @@ const inProcess = (): P.Maybe<Response> =>
     return socketResponse (101, { upgrade: SOCKET }, pair[0])
   }) (pairCtor ())
 
-const handling = <S, E>(
-  config: Config<S, E>,
+const handling = <C extends Context>(
+  config: Config<C>,
   record: WorkerRecord,
-  routes: readonly Route<S, E>[],
+  routes: readonly Route<C>[],
 ) =>
   answered (drawingOf ({
-    options: config as HandlerOptions<S, E> & {
+    options: config as HandlerOptions<C> & {
       readonly include?: readonly KitIsland[]
     },
     manifest: record.manifest,
@@ -282,10 +282,10 @@ const orDrawn =
  * export default worker (application, { record })
  * ```
  */
-export function worker<S, E = unknown>(
-  config: Config<S, E>,
+export function worker<C extends Context = Context>(
+  config: Config<C>,
   options: WorkerOptions,
-): WorkerHandler<E & WorkerBindings> {
+): WorkerHandler<C['env'] & WorkerBindings> {
   const routes = routesFrom (config) (dataIn (options.record))
   const ownsLive = P.any (isLiveRoute) (routes)
   const handle = handling (config, options.record, routes)
@@ -304,7 +304,7 @@ export function worker<S, E = unknown>(
   return {
     fetch: (
       request: Request,
-      env: E & WorkerBindings,
+      env: C['env'] & WorkerBindings,
       ctx: WorkerContext,
     ): Promise<Response> =>
       F.promise (
@@ -314,7 +314,7 @@ export function worker<S, E = unknown>(
               ? undefined
               : relayTo (env.KIT_LIVE, ctx)
             const draw = (): Promise<Response> =>
-              handle (request, { ...arrivalOf<E> (request), env, live })
+              handle (request, { ...arrivalOf<C['env']> (request), env, live })
             return orDrawn (() => orSocket (env) (request) (draw)) (asset)
           }),
         ) (assets (env) (request)),

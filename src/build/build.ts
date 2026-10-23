@@ -3,7 +3,7 @@ import * as F from '@algosail/plyfuture'
 import * as esbuild from 'esbuild'
 import { pathToFileURL } from 'node:url'
 import type { Prepared } from '../app/data.ts'
-import type { Routes } from '../app/types.ts'
+import type { Context, Routes } from '../app/types.ts'
 import type { DirEntry } from '../fs/disk.ts'
 import type { Declared } from '../islands/island.ts'
 import { DATA, prepare } from '../app/data.ts'
@@ -166,16 +166,16 @@ export type Where = {
 }
 
 /** What to build, and where to put it. */
-export type Options<S = unknown> = Where & {
+export type Options<C extends Context = Context> = Where & {
   /** The directory the chunks are written into, created if it is missing. */
   /** Whether to minify the chunks. */
   readonly minify?: boolean
   /** Whether to work the style blocks out here and put the class names into the chunks, instead of leaving the text for the browser to work out. */
   readonly extract?: boolean
   /** The app's routes. */
-  readonly routes?: Routes<S>
+  readonly routes?: Routes<C>
   /** The app's state, for the loads above. */
-  readonly state?: (request: Request) => F.Future<unknown, S>
+  readonly state?: (request: Request) => F.Future<unknown, C['state']>
 }
 
 /** What something weighs, as written and as it goes over the wire. */
@@ -278,8 +278,8 @@ const renamed =
       F.attemptP (() => readText (`${outDir}/${asFileName (name)}.js`)),
     )
 
-const hashedEntries = <S>(
-  one: Building<S>,
+const hashedEntries = <C extends Context>(
+  one: Building<C>,
 ): F.Future<unknown, Readonly<P.StrMap<string>>> =>
   P.map ((ps: readonly P.Pair<string, string>[]) => P.fromPairs (ps)) (
     F.parallel (Number.POSITIVE_INFINITY) (
@@ -678,8 +678,8 @@ export async function chunkDir(
 }
 
 /** A build in progress: what it found, where it puts it, and what was in that directory before it started. */
-type Building<S> = {
-  readonly options: Options<S>
+type Building<C extends Context> = {
+  readonly options: Options<C>
   readonly found: readonly Found[]
   readonly outDir: string
   /** What survived the sweep. */
@@ -687,16 +687,16 @@ type Building<S> = {
 }
 
 /** The same, before the directory has been looked at. */
-type Starting<S> = Omit<Building<S>, 'foreign'>
+type Starting<C extends Context> = Omit<Building<C>, 'foreign'>
 
 /** A bundle being made: where its entries are written, and what they are. */
-type Bundling<S> = {
-  readonly build: Building<S>
+type Bundling<C extends Context> = {
+  readonly build: Building<C>
   readonly scratch: string
   readonly entries: readonly string[]
 }
 
-const minifyIn = <S>(at: Bundling<S>): boolean =>
+const minifyIn = <C extends Context>(at: Bundling<C>): boolean =>
   P.defaultTo (true) (at.build.options.minify)
 
 const scratchDir = (): F.Future<unknown, string> =>
@@ -706,54 +706,54 @@ const clearing = (scratch: string): F.Future<unknown, void> =>
   F.attemptP (() => rm (scratch, { recursive: true }))
 
 const entriesIn =
-  <S>(one: Building<S>) => (scratch: string): F.Future<unknown, Bundling<S>> =>
-    P.map ((entries: readonly string[]): Bundling<S> => ({
+  <C extends Context>(one: Building<C>) => (scratch: string): F.Future<unknown, Bundling<C>> =>
+    P.map ((entries: readonly string[]): Bundling<C> => ({
       build: one,
       scratch,
       entries,
     })) (writeEntries (scratch) (one.found))
 
-const leavesStyles = <S>(at: Bundling<S>): boolean =>
+const leavesStyles = <C extends Context>(at: Bundling<C>): boolean =>
   at.build.options.extract === false
 
-const knownStyles = <S>(at: Bundling<S>): ReadonlySet<string> =>
+const knownStyles = <C extends Context>(at: Bundling<C>): ReadonlySet<string> =>
   P.boolean<ReadonlySet<string>> (new Set (styleIds ())) (new Set<string> ()) (
     leavesStyles (at),
   )
 
-const bundlingAll = <S>(at: Bundling<S>): F.Future<unknown, void> =>
+const bundlingAll = <C extends Context>(at: Bundling<C>): F.Future<unknown, void> =>
   bundle (at.entries, at.build.outDir, minifyIn (at), knownStyles (at))
 
-const hasEntries = <S>(at: Bundling<S>): boolean => !P.isEmpty (at.entries)
+const hasEntries = <C extends Context>(at: Bundling<C>): boolean => !P.isEmpty (at.entries)
 
-const nothingToBundle = <S>(_: Bundling<S>): F.Future<unknown, void> =>
+const nothingToBundle = <C extends Context>(_: Bundling<C>): F.Future<unknown, void> =>
   F.resolve (undefined)
 
-const bundlingIn = <S>(at: Bundling<S>): F.Future<unknown, void> =>
-  P.ifElse<Bundling<S>> (hasEntries) (bundlingAll) (
+const bundlingIn = <C extends Context>(at: Bundling<C>): F.Future<unknown, void> =>
+  P.ifElse<Bundling<C>> (hasEntries) (bundlingAll) (
     nothingToBundle,
   ) (at)
 
 const writtenThenBundled =
-  <S>(one: Building<S>) => (scratch: string): F.Future<unknown, void> =>
-    P.chain (bundlingIn<S>) (entriesIn (one) (scratch))
+  <C extends Context>(one: Building<C>) => (scratch: string): F.Future<unknown, void> =>
+    P.chain (bundlingIn<C>) (entriesIn (one) (scratch))
 
-const bundling = <S>(one: Building<S>): F.Future<unknown, void> =>
+const bundling = <C extends Context>(one: Building<C>): F.Future<unknown, void> =>
   P.chain ((dir: string) =>
     F.lastly (clearing (dir)) (writtenThenBundled (one) (dir)),
   ) (scratchDir ())
 
-const preparing = <S>(one: Building<S>): F.Future<unknown, P.Maybe<Prepared>> =>
+const preparing = <C extends Context>(one: Building<C>): F.Future<unknown, P.Maybe<Prepared>> =>
   P.maybe_ (
     P.K (F.resolve (P.nothing<Prepared> ())),
   ) (
-    (routes: Routes<S>) =>
+    (routes: Routes<C>) =>
       P.map (P.just<Prepared>) (
-        F.attemptP (() => prepare<S> (routes, { state: one.options.state })),
+        F.attemptP (() => prepare<C> (routes, { state: one.options.state })),
       ),
   ) (P.fromNullable (one.options.routes))
 
-const styleLink = <S>(one: Building<S>) => (sheet: Written): string =>
+const styleLink = <C extends Context>(one: Building<C>) => (sheet: Written): string =>
   `${baseIn (one.options)}${sheet.name}`
 
 const bytesOf = (sheet: Written): Bytes => sheet.bytes
@@ -858,44 +858,44 @@ type WithSheet = WithEntries & Pick<Made, 'sheet'>
 type WithData = WithSheet & Pick<Made, 'data'>
 type WithFiles = WithData & Pick<Made, 'files'>
 
-const inlining = <S>(one: Building<S>): F.Future<unknown, Inlined> =>
+const inlining = <C extends Context>(one: Building<C>): F.Future<unknown, Inlined> =>
   P.chain (inlinePublic (one.outDir)) (ours (one.outDir) (one.foreign))
 
 const asEnv = (env: Inlined): WithEnv => ({ env })
 
 const withEntries =
-  <S>(one: Building<S>) => (made: WithEnv): F.Future<unknown, WithEntries> =>
+  <C extends Context>(one: Building<C>) => (made: WithEnv): F.Future<unknown, WithEntries> =>
     P.map ((entries: Readonly<P.StrMap<string>>): WithEntries => ({
       ...made,
       entries,
     })) (hashedEntries (one))
 
 const withSheet =
-  <S>(one: Building<S>) => (made: WithEntries): F.Future<unknown, WithSheet> =>
+  <C extends Context>(one: Building<C>) => (made: WithEntries): F.Future<unknown, WithSheet> =>
     P.map ((sheet: P.Maybe<Written>): WithSheet => ({ ...made, sheet })) (
       writeStyles (one.outDir),
     )
 
 const withData =
-  <S>(one: Building<S>) => (made: WithSheet): F.Future<unknown, WithData> =>
+  <C extends Context>(one: Building<C>) => (made: WithSheet): F.Future<unknown, WithData> =>
     P.map ((data: P.Maybe<Prepared>): WithData => ({ ...made, data })) (
       preparing (one),
     )
 
 const withFiles =
-  <S>(one: Building<S>) => (made: WithData): F.Future<unknown, WithFiles> =>
+  <C extends Context>(one: Building<C>) => (made: WithData): F.Future<unknown, WithFiles> =>
     P.map ((files: readonly string[]): WithFiles => ({ ...made, files })) (
       ours (one.outDir) (one.foreign),
     )
 
 const withBytes =
-  <S>(one: Building<S>) => (made: WithFiles): F.Future<unknown, Made> =>
+  <C extends Context>(one: Building<C>) => (made: WithFiles): F.Future<unknown, Made> =>
     P.map ((chunks: Readonly<P.StrMap<Chunk>>): Made => ({
       ...made,
       islandBytes: weightsIn (chunks) (made.entries),
     })) (weighed (one.outDir) (made.files))
 
-const madeIn = <S>(one: Building<S>): F.Future<unknown, Made> =>
+const madeIn = <C extends Context>(one: Building<C>): F.Future<unknown, Made> =>
   P.chain (
     P.pipe ([
       withEntries (one),
@@ -906,7 +906,7 @@ const madeIn = <S>(one: Building<S>): F.Future<unknown, Made> =>
     ]),
   ) (P.map (asEnv) (inlining (one)))
 
-const asBuilt = <S>(one: Building<S>) => (made: Made): Built => ({
+const asBuilt = <C extends Context>(one: Building<C>) => (made: Made): Built => ({
   tag: 'built',
   manifest: asManifest (baseIn (one.options)) (made.entries),
   styles: P.fromMaybe<string | null> (null) (
@@ -947,7 +947,7 @@ const recording = (outDir: string) => (built: Built): F.Future<unknown, void> =>
   )
 
 const written =
-  <S>(one: Building<S>) => (built: Built): F.Future<unknown, Built> =>
+  <C extends Context>(one: Building<C>) => (built: Built): F.Future<unknown, Built> =>
     P.voidRight (built) (
       F.parallel (Number.POSITIVE_INFINITY) ([
         P.voided (recording (one.outDir) (built)),
@@ -955,12 +955,12 @@ const written =
       ]),
     )
 
-const chunkDirIn = <S>(options: Options<S>): F.Future<unknown, string> =>
+const chunkDirIn = <C extends Context>(options: Options<C>): F.Future<unknown, string> =>
   F.attemptP (() => chunkDir (options))
 
-const started = <S>(options: Options<S>): F.Future<unknown, Starting<S>> =>
+const started = <C extends Context>(options: Options<C>): F.Future<unknown, Starting<C>> =>
   P.ap (
-    P.map ((found: readonly Found[]) => (outDir: string): Starting<S> => ({
+    P.map ((found: readonly Found[]) => (outDir: string): Starting<C> => ({
       options,
       found,
       outDir,
@@ -968,7 +968,7 @@ const started = <S>(options: Options<S>): F.Future<unknown, Starting<S>> =>
   ) (chunkDirIn (options))
 
 const asSwept =
-  <S>(one: Starting<S>) => (foreign: readonly string[]): Building<S> => ({
+  <C extends Context>(one: Starting<C>) => (foreign: readonly string[]): Building<C> => ({
     ...one,
     foreign,
   })
@@ -977,13 +977,13 @@ const thenListing =
   (outDir: string) => (_: void): F.Future<unknown, readonly string[]> =>
     listFiles (outDir)
 
-const swept = <S>(one: Starting<S>): F.Future<unknown, Building<S>> =>
+const swept = <C extends Context>(one: Starting<C>): F.Future<unknown, Building<C>> =>
   P.map (asSwept (one)) (P.chain (thenListing (one.outDir)) (sweep (one.outDir)))
 
-const bundled = <S>(one: Building<S>): F.Future<unknown, Building<S>> =>
+const bundled = <C extends Context>(one: Building<C>): F.Future<unknown, Building<C>> =>
   P.voidRight (one) (bundling (one))
 
-const finished = <S>(one: Building<S>): F.Future<unknown, Built> =>
+const finished = <C extends Context>(one: Building<C>): F.Future<unknown, Built> =>
   P.chain (written (one)) (P.map (asBuilt (one)) (madeIn (one)))
 
 /**
@@ -999,10 +999,10 @@ const finished = <S>(one: Building<S>): F.Future<unknown, Built> =>
  * // => '/_kit/counter.js'
  * ```
  */
-export function build<S = unknown>(options: Options<S>): Promise<Built> {
+export function build<C extends Context = Context>(options: Options<C>): Promise<Built> {
   return F.promise (
-    P.chain (finished<S>) (
-      P.chain (bundled<S>) (P.chain (swept<S>) (started<S> (options))),
+    P.chain (finished<C>) (
+      P.chain (bundled<C>) (P.chain (swept<C>) (started<C> (options))),
     ),
   )
 }

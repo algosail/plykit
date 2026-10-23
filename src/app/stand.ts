@@ -4,7 +4,7 @@ import type { KitIsland, Manifest, Sheet } from '../build/build.ts'
 import type { Hazard } from '../document/html.ts'
 import type { Prebuilt } from './data.ts'
 import type { Options as HandlerOptions } from './server.ts'
-import type { Arrival, Reply, Route, Routes } from './types.ts'
+import type { Arrival, Context, Reply, Route, Routes } from './types.ts'
 import { collectBeyond } from '../document/css.ts'
 import { prebuilt } from './data.ts'
 import { liveRoute, reloadRoute } from './events.ts'
@@ -13,13 +13,13 @@ import { answer, sendingOut } from './server.ts'
 import { LIVE_PATH, RELOAD_PATH } from './types.ts'
 
 /** What a host has settled before it draws: the build's report, and the routes. */
-export type Standing<S, E> = {
-  readonly options: HandlerOptions<S, E> & {
+export type Standing<C extends Context> = {
+  readonly options: HandlerOptions<C> & {
     readonly include?: readonly KitIsland[]
   }
   readonly manifest: Manifest
   readonly sheet: Sheet
-  readonly routes: readonly Route<S, E>[]
+  readonly routes: readonly Route<C>[]
 }
 
 /** Something that always has an answer. */
@@ -32,80 +32,80 @@ export type Draws<E = unknown> = (
 type Styling = (markup: string) => string
 
 /** What the route list is built from: the app's routes, and which kit islands. */
-type Asked<S, E> = {
-  readonly routes: Routes<S, E>
+type Asked<C extends Context> = {
+  readonly routes: Routes<C>
   readonly include?: readonly KitIsland[]
 }
 
 /** A path one of kit's own islands watches, and the route that answers it. */
-type Comes<S, E> = {
+type Comes<C extends Context> = {
   readonly island: KitIsland
   readonly pattern: string
-  readonly route: () => Route<S, E>
+  readonly route: () => Route<C>
 }
 
-const comesWith = <S, E>(): readonly Comes<S, E>[] => [
-  { island: 'live', pattern: LIVE_PATH, route: liveRoute<S, E> },
-  { island: 'reload', pattern: RELOAD_PATH, route: reloadRoute<S, E> },
+const comesWith = <C extends Context>(): readonly Comes<C>[] => [
+  { island: 'live', pattern: LIVE_PATH, route: liveRoute<C> },
+  { island: 'reload', pattern: RELOAD_PATH, route: reloadRoute<C> },
 ]
 
-const islandOf = <S, E>(comes: Comes<S, E>): KitIsland => comes.island
+const islandOf = <C extends Context>(comes: Comes<C>): KitIsland => comes.island
 
-const patternOf = <S, E>(comes: Comes<S, E>): string => comes.pattern
+const patternOf = <C extends Context>(comes: Comes<C>): string => comes.pattern
 
-const asRoute = <S, E>(comes: Comes<S, E>): Route<S, E> => comes.route ()
+const asRoute = <C extends Context>(comes: Comes<C>): Route<C> => comes.route ()
 
-const routePattern = <S, E>(route: Route<S, E>): string => route.pattern
+const routePattern = <C extends Context>(route: Route<C>): string => route.pattern
 
-const asksFor = <S, E>(options: Asked<S, E>) => (island: KitIsland): boolean =>
+const asksFor = <C extends Context>(options: Asked<C>) => (island: KitIsland): boolean =>
   P.pipe ([
     P.defaultTo<readonly KitIsland[]> ([]),
     P.elem (island),
   ]) (options.include)
 
-const patternsIn = <S, E>(routes: readonly Route<S, E>[]): readonly string[] =>
-  P.map (routePattern<S, E>) (routes)
+const patternsIn = <C extends Context>(routes: readonly Route<C>[]): readonly string[] =>
+  P.map (routePattern<C>) (routes)
 
 const claimed = (patterns: readonly string[]) => (pattern: string): boolean =>
   P.elem (pattern) (patterns)
 
-const wanted = <S, E>(options: Asked<S, E>): (comes: Comes<S, E>) => boolean =>
-  P.pipe ([islandOf<S, E>, asksFor (options)])
+const wanted = <C extends Context>(options: Asked<C>): (comes: Comes<C>) => boolean =>
+  P.pipe ([islandOf<C>, asksFor (options)])
 
-const taken = <S, E>(routes: readonly Route<S, E>[]): (comes: Comes<S, E>) => boolean =>
-  P.pipe ([patternOf<S, E>, claimed (patternsIn (routes))])
+const taken = <C extends Context>(routes: readonly Route<C>[]): (comes: Comes<C>) => boolean =>
+  P.pipe ([patternOf<C>, claimed (patternsIn (routes))])
 
 const coming =
-  <S, E>(options: Asked<S, E>) =>
-  (routes: readonly Route<S, E>[]): (comes: Comes<S, E>) => boolean =>
+  <C extends Context>(options: Asked<C>) =>
+  (routes: readonly Route<C>[]): (comes: Comes<C>) => boolean =>
     P.predicateAnd (P.predicate (wanted (options))) (
       P.predicateNot (P.predicate (taken (routes))),
     )
 
 const absent =
-  <S, E>(options: Asked<S, E>) =>
-  (routes: readonly Route<S, E>[]): readonly Comes<S, E>[] =>
-    P.filter (coming (options) (routes)) (comesWith<S, E> ())
+  <C extends Context>(options: Asked<C>) =>
+  (routes: readonly Route<C>[]): readonly Comes<C>[] =>
+    P.filter (coming (options) (routes)) (comesWith<C> ())
 
 const mountable =
-  <S, E>(options: Asked<S, E>) =>
-  (routes: readonly Route<S, E>[]): readonly Route<S, E>[] =>
-    P.map (asRoute<S, E>) (absent (options) (routes))
+  <C extends Context>(options: Asked<C>) =>
+  (routes: readonly Route<C>[]): readonly Route<C>[] =>
+    P.map (asRoute<C>) (absent (options) (routes))
 
 const mounted =
-  <S, E>(options: Asked<S, E>) =>
-  (routes: readonly Route<S, E>[]): readonly Route<S, E>[] =>
+  <C extends Context>(options: Asked<C>) =>
+  (routes: readonly Route<C>[]): readonly Route<C>[] =>
     P.concat (routes) (mountable (options) (routes))
 
 const swapping =
-  <S, E>(options: Asked<S, E>) => (data: Prebuilt): readonly Route<S, E>[] =>
-    prebuilt<S, E> (data) (options.routes)
+  <C extends Context>(options: Asked<C>) => (data: Prebuilt): readonly Route<C>[] =>
+    prebuilt<C> (data) (options.routes)
 
-const asGiven = <S, E>(options: Asked<S, E>): readonly Route<S, E>[] =>
+const asGiven = <C extends Context>(options: Asked<C>): readonly Route<C>[] =>
   flat (options.routes)
 
 const asRead =
-  <S, E>(options: Asked<S, E>) => (data: P.Maybe<Prebuilt>): readonly Route<S, E>[] =>
+  <C extends Context>(options: Asked<C>) => (data: P.Maybe<Prebuilt>): readonly Route<C>[] =>
     P.maybe_ (() => asGiven (options)) (swapping (options)) (data)
 
 /**
@@ -117,17 +117,17 @@ const asRead =
  * ```
  */
 export const routesFrom =
-  <S, E = unknown>(options: Asked<S, E>) => (data: P.Maybe<Prebuilt>): readonly Route<S, E>[] =>
+  <C extends Context = Context>(options: Asked<C>) => (data: P.Maybe<Prebuilt>): readonly Route<C>[] =>
     mounted (options) (asRead (options) (data))
 
-const inlinesOwn = <S, E>(at: Standing<S, E>): boolean =>
+const inlinesOwn = <C extends Context>(at: Standing<C>): boolean =>
   at.options.styles !== undefined
 
 const noLink: (had: P.Maybe<string>) => P.Maybe<string> = P.K (
   P.nothing<string> (),
 )
 
-const sheetIn = <S, E>(at: Standing<S, E>): P.Maybe<string> =>
+const sheetIn = <C extends Context>(at: Standing<C>): P.Maybe<string> =>
   P.onlyIf (inlinesOwn (at)) (noLink) (at.sheet.styles)
 
 /** A `<link>` tag, attribute by attribute, as a head carries it. */
@@ -140,25 +140,25 @@ const linkTo = (sheet: Sheet) => (href: string): Link => ({
 })
 
 /** Kit's own sheet. It leads the links a page settled on, and a page cannot drop it by replacing `link`. */
-const styleLinkOf = <S, E>(
-  at: Standing<S, E>,
+const styleLinkOf = <C extends Context>(
+  at: Standing<C>,
 ): Link | undefined =>
   P.maybe_<Link | undefined> (() => undefined) (linkTo (at.sheet)) (sheetIn (at))
 
-const asOwn = <S, E>(at: Standing<S, E>) => (): Styling | undefined =>
+const asOwn = <C extends Context>(at: Standing<C>) => (): Styling | undefined =>
   at.options.styles
 
-const stylesIn = <S, E>(at: Standing<S, E>): Styling | undefined =>
+const stylesIn = <C extends Context>(at: Standing<C>): Styling | undefined =>
   P.maybe_ (asOwn (at)) (
     () => collectBeyond (at.sheet.styleIds),
   ) (sheetIn (at))
 
-const reloadScript = <S, E>(at: Standing<S, E>): readonly string[] =>
+const reloadScript = <C extends Context>(at: Standing<C>): readonly string[] =>
   P.boolean<readonly string[]> ([]) (
     P.toArray (P.lookup ('reload') (at.manifest)),
   ) (asksFor (at.options) ('reload'))
 
-const alwaysIn = <S, E>(at: Standing<S, E>): readonly string[] =>
+const alwaysIn = <C extends Context>(at: Standing<C>): readonly string[] =>
   P.concat (P.defaultTo<readonly string[]> ([]) (at.options.always)) (
     reloadScript (at),
   )
@@ -178,7 +178,7 @@ const warn = (hazards: readonly Hazard[], url: URL): void => {
  * drawingOf ({ options, manifest, sheet, routes })
  * ```
  */
-export function drawingOf<S, E = unknown>(at: Standing<S, E>): Draws<E> {
+export function drawingOf<C extends Context = Context>(at: Standing<C>): Draws<C['env']> {
   return answer ({
     ...at.options,
     routes: at.routes,
@@ -187,7 +187,7 @@ export function drawingOf<S, E = unknown>(at: Standing<S, E>): Draws<E> {
     styles: stylesIn (at),
     onHazard: P.defaultTo (warn) (at.options.onHazard),
     always: alwaysIn (at),
-  } as HandlerOptions<S, E>)
+  } as HandlerOptions<C>)
 }
 
 /**

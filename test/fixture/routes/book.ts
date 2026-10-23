@@ -7,7 +7,7 @@ import type { Book } from '../records/books.ts'
 import type { Loan } from '../records/loans.ts'
 import type { Note } from '../records/notes.ts'
 import type { Reader } from '../records/readers.ts'
-import type { State } from '../state.ts'
+import type { App, State } from '../state.ts'
 import {
   data,
   failed,
@@ -100,12 +100,12 @@ const fromReader =
 const signedOut = (): F.Future<unknown, Reply> =>
   F.resolve (failed (403) ('only readers can write in the margins'))
 
-const posted: Handler<State> = (ctx) =>
+const posted: Handler<App> = (ctx) =>
   P.chain ((fields: Readonly<P.StrMap<string>>) =>
     P.maybe_ (signedOut) (fromReader (ctx) (fields)) (ctx.state.reader),
   ) (readFields (ctx.request))
 
-export const book: Route<State> = page ({
+export const book: Route<App> = page ({
   pattern: PATTERN,
   load: (ctx) => read (asked (ctx.params.slug)) (asRead (ctx.params.slug)),
   head: (ctx) => ({

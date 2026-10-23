@@ -24,10 +24,10 @@ import { digest } from './sign.ts'
  * // => logging wraps cors wraps noStore wraps the app
  * ```
  */
-export function stack<S, E = unknown>(
-  middlewares: readonly Middleware<S, E>[],
-): Middleware<S, E> {
-  return P.pipe (P.reverse (middlewares)) as Middleware<S, E>
+export function stack<C extends Context = Context>(
+  middlewares: readonly Middleware<C>[],
+): Middleware<C> {
+  return P.pipe (P.reverse (middlewares)) as Middleware<C>
 }
 
 /**
@@ -41,18 +41,18 @@ export function stack<S, E = unknown>(
  */
 export function when(
   claims: (ctx: Context<unknown>) => boolean,
-): <S, E>(middleware: Middleware<S, E>) => Middleware<S, E> {
-  return <S, E>(middleware: Middleware<S, E>): Middleware<S, E> =>
-  (next: Answering<S, E>): Answering<S, E> =>
-    P.ifElse<Context<S, E>> (claims) (middleware (next)) (
+): <C extends Context>(middleware: Middleware<C>) => Middleware<C> {
+  return <C extends Context>(middleware: Middleware<C>): Middleware<C> =>
+  (next: Answering<C>): Answering<C> =>
+    P.ifElse<C> (claims) (middleware (next)) (
       next,
     )
 }
 
-const idOf = <S, E>(route: Route<S, E>): string => route.id
+const idOf = <C extends Context>(route: Route<C>): string => route.id
 
-const idsIn = <S, E>(routes: Routes<S, E> | Route<S, E>): Set<string> =>
-  P.setFromIterable (P.map (idOf<S, E>) (flat (routes)))
+const idsIn = <C extends Context>(routes: Routes<C> | Route<C>): Set<string> =>
+  P.setFromIterable (P.map (idOf<C>) (flat (routes)))
 
 const isAmong = (claimed: Set<string>) => (ctx: Context<unknown>): boolean =>
   P.setMember (ctx.routeId) (claimed)
@@ -68,10 +68,10 @@ const isAmong = (claimed: Set<string>) => (ctx: Context<unknown>): boolean =>
  * // => the same for a single route, without a list around it
  * ```
  */
-export function only<S, E = unknown>(
-  routes: Routes<S, E> | Route<S, E>,
-): (middleware: Middleware<S, E>) => Middleware<S, E> {
-  return P.pipe ([idsIn<S, E>, isAmong, when]) (routes)
+export function only<C extends Context = Context>(
+  routes: Routes<C> | Route<C>,
+): (middleware: Middleware<C>) => Middleware<C> {
+  return P.pipe ([idsIn<C>, isAmong, when]) (routes)
 }
 
 /**
@@ -83,10 +83,10 @@ export function only<S, E = unknown>(
  * // => a middleware that answers with the path it answered for
  * ```
  */
-export function around<S, E = unknown>(
-  change: (ctx: Context<S, E>) => (reply: Reply) => Reply,
-): Middleware<S, E> {
-  return (next: Answering<S, E>): Answering<S, E> => (ctx: Context<S, E>) => {
+export function around<C extends Context = Context>(
+  change: (ctx: C) => (reply: Reply) => Reply,
+): Middleware<C> {
+  return (next: Answering<C>): Answering<C> => (ctx: C) => {
     const onReply = change (ctx)
     return P.map (onReply) (next (ctx))
   }
@@ -101,8 +101,8 @@ export function around<S, E = unknown>(
  * // => a middleware that says it on every answer
  * ```
  */
-export function after<S, E = unknown>(change: (reply: Reply) => Reply): Middleware<S, E> {
-  return around<S, E> (P.K (change))
+export function after<C extends Context = Context>(change: (reply: Reply) => Reply): Middleware<C> {
+  return around<C> (P.K (change))
 }
 
 /**
@@ -117,10 +117,10 @@ export function after<S, E = unknown>(change: (reply: Reply) => Reply): Middlewa
  * // => a middleware that times every answer and changes none
  * ```
  */
-export function watch<S, E = unknown>(
-  look: (ctx: Context<S, E>) => (reply: Reply) => void,
-): Middleware<S, E> {
-  return around<S, E> ((ctx: Context<S, E>) => P.tap (look (ctx)))
+export function watch<C extends Context = Context>(
+  look: (ctx: C) => (reply: Reply) => void,
+): Middleware<C> {
+  return around<C> ((ctx: C) => P.tap (look (ctx)))
 }
 
 /**
@@ -132,10 +132,10 @@ export function watch<S, E = unknown>(
  * // => a middleware every load and view sees the result of
  * ```
  */
-export function before<S, E = unknown>(
-  change: (ctx: Context<S, E>) => Context<S, E>,
-): Middleware<S, E> {
-  return (next: Answering<S, E>): Answering<S, E> => P.pipe ([change, next])
+export function before<C extends Context = Context>(
+  change: (ctx: C) => C,
+): Middleware<C> {
+  return (next: Answering<C>): Answering<C> => P.pipe ([change, next])
 }
 
 /** Who may call this from another site, and with what. */
@@ -201,16 +201,16 @@ const isPreflight = (ctx: Context<unknown>): boolean =>
  * whenRequest ((ctx) => startsWith ('/api/') (ctx.url.pathname)) (cors ())
  * ```
  */
-export function cors<S = unknown, E = unknown>(options: CorsOptions = {}): Middleware<S, E> {
+export function cors<C extends Context = Context>(options: CorsOptions = {}): Middleware<C> {
   const dressed: (reply: Reply) => Reply = P.pipe ([
     Rp.headers (allowingOf (options)),
     P.onlyIf (!isForEverybody (options)) (Rp.vary ('origin')),
   ])
 
-  return (next: Answering<S, E>): Answering<S, E> =>
-    P.ifElse<Context<S, E>> (isPreflight) (
+  return (next: Answering<C>): Answering<C> =>
+    P.ifElse<C> (isPreflight) (
       P.K (F.resolve (dressed (Rp.noContent ()))),
-    ) ((ctx: Context<S, E>) => P.map (dressed) (next (ctx)))
+    ) ((ctx: C) => P.map (dressed) (next (ctx)))
 }
 
 const tagOf = (body: string): F.Future<unknown, string> =>
@@ -256,7 +256,7 @@ const answeredWith =
  * app ({ routes, through: [etag (), ...through] })
  * ```
  */
-export function etag<S = unknown, E = unknown>(): Middleware<S, E> {
+export function etag<C extends Context = Context>(): Middleware<C> {
   const tagging =
     (ctx: Context<unknown>) => (reply: Reply): F.Future<unknown, Reply> =>
       P.maybe_ (
@@ -265,9 +265,9 @@ export function etag<S = unknown, E = unknown>(): Middleware<S, E> {
         (drawn: Drawn) => P.map (answeredWith (ctx) (drawn)) (tagOf (drawn.body)),
       ) (P.fromPredicate (isDrawn) (reply))
 
-  return (next: Answering<S, E>): Answering<S, E> =>
-    P.ifElse<Context<S, E>> (isAsking) (
-      (ctx: Context<S, E>) => P.chain (tagging (ctx)) (next (ctx)),
+  return (next: Answering<C>): Answering<C> =>
+    P.ifElse<C> (isAsking) (
+      (ctx: C) => P.chain (tagging (ctx)) (next (ctx)),
     ) (next)
 }
 
@@ -308,7 +308,7 @@ const fieldOf: (reportOnly: boolean) => string = P.boolean (
  * app ({ routes, through: [csp ({ directives: { 'img-src': "'self' data:" } })] })
  * ```
  */
-export function csp<S = unknown, E = unknown>(options: CspOptions = {}): Middleware<S, E> {
+export function csp<C extends Context = Context>(options: CspOptions = {}): Middleware<C> {
   const said = P.concat (OWN) (P.defaultTo (nothingSaid) (options.directives))
   return after (
     Rp.header (fieldOf (options.reportOnly === true)) (policyOf (said)),
@@ -337,17 +337,17 @@ const isSpelledRight = (wanted: boolean) => (ctx: Context<unknown>): boolean =>
  * app ({ routes, through: [trailingSlash ({ trailing: false })] })
  * ```
  */
-export function trailingSlash<S = unknown, E = unknown>(
+export function trailingSlash<C extends Context = Context>(
   options: SlashOptions = {},
-): Middleware<S, E> {
+): Middleware<C> {
   const wanted = P.defaultTo (false) (options.trailing)
-  const sendOn = (ctx: Context<S, E>): F.Future<unknown, Reply> =>
+  const sendOn = (ctx: C): F.Future<unknown, Reply> =>
     F.resolve (
       Rp.redirect (`${respelled (ctx.url.pathname)}${ctx.url.search}`, 308),
     )
 
-  return (next: Answering<S, E>): Answering<S, E> =>
-    P.ifElse<Context<S, E>> (isSpelledRight (wanted)) (
+  return (next: Answering<C>): Answering<C> =>
+    P.ifElse<C> (isSpelledRight (wanted)) (
       next,
     ) (sendOn)
 }
@@ -362,8 +362,8 @@ export function trailingSlash<S = unknown, E = unknown>(
  * app ({ routes, through: [when (not (ours)) (instead (() => failed (403) ('none')))] })
  * ```
  */
-export function instead<S = unknown, E = unknown>(
-  reply: (ctx: Context<S, E>) => Reply,
-): Middleware<S, E> {
-  return (_next: Answering<S, E>): Answering<S, E> => P.pipe ([reply, F.resolve])
+export function instead<C extends Context = Context>(
+  reply: (ctx: C) => Reply,
+): Middleware<C> {
+  return (_next: Answering<C>): Answering<C> => P.pipe ([reply, F.resolve])
 }

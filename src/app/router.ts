@@ -25,32 +25,32 @@ import { data } from './reply.ts'
 import * as R from './route.ts'
 
 /** A route with its pattern already parsed: one row of the table. */
-export type Row<S = unknown, E = unknown> = {
-  readonly route: Route<S, E>
+export type Row<C extends Context = Context> = {
+  readonly route: Route<C>
   readonly pattern: R.Pattern
 }
 
 /** A route table, ordered most specific first. */
-export type Table<S = unknown, E = unknown> = {
+export type Table<C extends Context = Context> = {
   readonly tag: 'table'
-  readonly rows: readonly Row<S, E>[]
+  readonly rows: readonly Row<C>[]
 }
 
 /** A path resolved to the route that claims it and the captures it made. */
-export type Match<S = unknown, E = unknown> = {
-  readonly route: Route<S, E>
+export type Match<C extends Context = Context> = {
+  readonly route: Route<C>
   readonly params: Params
 }
 
 /** Everything a page needs, before the data type is erased. */
-export type PageSpec<D extends Json, S = unknown, E = unknown> = {
+export type PageSpec<C extends Context = Context, D extends Json = Json> = {
   readonly pattern: string
   /** What this page needs before it can be drawn. */
-  readonly load?: Load<D, S, E>
-  readonly view: PageView<D, S, E>
-  readonly head?: PageHead<D, S, E>
+  readonly load?: Load<C, D>
+  readonly view: PageView<C, D>
+  readonly head?: PageHead<C, D>
   /** What answers the methods a page does not. */
-  readonly on?: PageHandlers<D, S, E>
+  readonly on?: PageHandlers<C, D>
   /** Whether this page can be written out as a file — see `staticSite`. */
   readonly static?: boolean
   /** The addresses to write, for a pattern that has captures. */
@@ -58,46 +58,37 @@ export type PageSpec<D extends Json, S = unknown, E = unknown> = {
 }
 
 /** Everything an endpoint needs: a path, and what answers on it. */
-export type EndpointSpec<S = unknown, E = unknown> = {
+export type EndpointSpec<C extends Context = Context> = {
   readonly pattern: string
-  readonly on: Handlers<S, E>
+  readonly on: Handlers<C>
   /** Whether this endpoint can be written out as a file — see `staticSite`. */
   readonly static?: boolean
   /** The addresses to write, for a pattern that has captures. */
   readonly paths?: () => F.Future<unknown, readonly Params[]>
 }
 
-/** What a page's view and head are handed, once the data type is known. */
-type Given<D extends Json, S, E> = Context<S, E> & { readonly data: D }
-
-/** The same, with the slot a layout draws around. */
-type Framed<D extends Json, S, E> = Given<D, S, E> & { readonly slot: Child }
-
-const narrowed = <D extends Json, C extends { readonly data: Json }>(
-  ctx: C,
-): Omit<C, 'data'> & { readonly data: D } => ({ ...ctx, data: ctx.data as D })
-
-const widened = <D extends Json, C extends { readonly data: Json }, B>(
-  f: (ctx: Omit<C, 'data'> & { readonly data: D }) => B,
-): (ctx: C) => B =>
-(ctx: C): B => f (narrowed<D, C> (ctx))
+/** The data a page stored is `Json` once the route is built. The view still sees its own `D`. */
+const asJson =
+  <D extends Json, A, B>(f: (ctx: A & { readonly data: D }) => B) =>
+  (ctx: A & { readonly data: Json }): B =>
+    f ({ ...ctx, data: ctx.data as D })
 
 const noLoad = <D extends Json>(): F.Future<unknown, Loaded<D>> =>
   F.resolve (data ({} as D))
 
-const headOf = <D extends Json, S, E>(
-  own: PageHead<D, S, E> | undefined,
-): PageHead<Json, S, E> | undefined =>
+const headOf = <D extends Json, C extends Context>(
+  own: PageHead<C, D> | undefined,
+): PageHead<C, Json> | undefined =>
   own === undefined
     ? undefined
-    : widened<D, Given<Json, S, E>, HeadPatch> (own)
+    : asJson<D, C, HeadPatch> (own)
 
-const chromeOf = <D extends Json, S, E>(spec: LayoutSpec<D, S, E>): Chrome<S, E> => {
-  const chrome: Chrome<S, E> = {
-    load: P.defaultTo<Load<Json, S, E>> (noLoad) (spec.load),
-    view: widened<D, Framed<Json, S, E>, View> (spec.view),
+const chromeOf = <D extends Json, C extends Context>(spec: LayoutSpec<C, D>): Chrome<C> => {
+  const chrome: Chrome<C> = {
+    load: P.defaultTo<Load<C, Json>> (noLoad) (spec.load),
+    view: asJson<D, C & { readonly slot: Child }, View> (spec.view),
   }
-  const head = headOf<D, S, E> (spec.head)
+  const head = headOf<D, C> (spec.head)
   return head === undefined ? chrome : { ...chrome, head }
 }
 
@@ -115,19 +106,19 @@ const stillnessOf = (spec: {
  * // => PageRoute
  * ```
  */
-export function page<D extends Json, S = unknown, E = unknown>(
-  spec: PageSpec<D, S, E>,
-): PageRoute<Json, S, E> {
+export function page<C extends Context = Context, D extends Json = Json>(
+  spec: PageSpec<C, D>,
+): PageRoute<C, Json> {
   return {
     tag: 'page',
     id: spec.pattern,
     pattern: spec.pattern,
-    on: P.defaultTo<PageHandlers<Json, S, E>> ({}) (spec.on),
+    on: P.defaultTo<PageHandlers<C, Json>> ({}) (spec.on),
     still: stillnessOf (spec),
-    load: P.defaultTo<Load<Json, S, E>> (noLoad) (spec.load),
+    load: P.defaultTo<Load<C, Json>> (noLoad) (spec.load),
     layouts: [],
-    view: widened<D, Given<Json, S, E>, View> (spec.view),
-    head: headOf<D, S, E> (spec.head),
+    view: asJson<D, C, View> (spec.view),
+    head: headOf<D, C> (spec.head),
   }
 }
 
@@ -140,7 +131,7 @@ export function page<D extends Json, S = unknown, E = unknown>(
  * // => Endpoint
  * ```
  */
-export function endpoint<S = unknown, E = unknown>(spec: EndpointSpec<S, E>): Endpoint<S, E> {
+export function endpoint<C extends Context = Context>(spec: EndpointSpec<C>): Endpoint<C> {
   return {
     tag: 'endpoint',
     id: spec.pattern,
@@ -150,10 +141,10 @@ export function endpoint<S = unknown, E = unknown>(spec: EndpointSpec<S, E>): En
   }
 }
 
-const wrapped = <S, E>(chrome: Chrome<S, E>): (route: Route<S, E>) => Route<S, E> =>
-  P.cases<Route<S, E>, Route<S, E>> ({
-    endpoint: P.I<Endpoint<S, E>>,
-    page: (one: PageRoute<Json, S, E>): Route<S, E> => ({
+const wrapped = <C extends Context>(chrome: Chrome<C>): (route: Route<C>) => Route<C> =>
+  P.cases<Route<C>, Route<C>> ({
+    endpoint: P.I<Endpoint<C>>,
+    page: (one: PageRoute<C, Json>): Route<C> => ({
       ...one,
       layouts: P.prepend (chrome) (one.layouts),
     }),
@@ -169,12 +160,12 @@ const wrapped = <S, E>(chrome: Chrome<S, E>): (route: Route<S, E>) => Route<S, E
  * // home draws site (home); intro draws site (docs (intro))
  * ```
  */
-export function layout<D extends Json, S = unknown, E = unknown>(
-  spec: LayoutSpec<D, S, E>,
-): Layout<S, E> {
-  const around = wrapped<S, E> (chromeOf (spec))
+export function layout<C extends Context = Context, D extends Json = Json>(
+  spec: LayoutSpec<C, D>,
+): Layout<C> {
+  const around = wrapped<C> (chromeOf (spec))
 
-  return (routes: Routes<S, E>): Route<S, E>[] => P.map (around) (flat (routes))
+  return (routes: Routes<C>): Route<C>[] => P.map (around) (flat (routes))
 }
 
 /**
@@ -188,16 +179,16 @@ export function layout<D extends Json, S = unknown, E = unknown>(
  * // => 1
  * ```
  */
-export function flat<S, E = unknown>(routes: Routes<S, E> | Route<S, E>): readonly Route<S, E>[] {
+export function flat<C extends Context = Context>(routes: Routes<C> | Route<C>): readonly Route<C>[] {
   return [routes].flat (2)
 }
 
-const rowOf = <S, E>(route: Route<S, E>): Row<S, E> => ({
+const rowOf = <C extends Context>(route: Route<C>): Row<C> => ({
   route,
   pattern: R.parsePattern (route.pattern),
 })
 
-const byPattern = <S, E>(a: Row<S, E>, b: Row<S, E>): P.Ordering =>
+const byPattern = <C extends Context>(a: Row<C>, b: Row<C>): P.Ordering =>
   R.compare (a.pattern) (b.pattern)
 
 /**
@@ -209,15 +200,15 @@ const byPattern = <S, E>(a: Row<S, E>, b: Row<S, E>): P.Ordering =>
  * // => '/blog/new'
  * ```
  */
-export function table<S = unknown, E = unknown>(routes: Routes<S, E>): Table<S, E> {
+export function table<C extends Context = Context>(routes: Routes<C>): Table<C> {
   return {
     tag: 'table',
-    rows: P.sortWith (byPattern<S, E>) (P.map (rowOf<S, E>) (flat (routes))),
+    rows: P.sortWith (byPattern<C>) (P.map (rowOf<C>) (flat (routes))),
   }
 }
 
-const matchOf = <S, E>(path: string) => (row: Row<S, E>): P.Maybe<Match<S, E>> =>
-  P.map ((params: Params): Match<S, E> => ({ route: row.route, params })) (
+const matchOf = <C extends Context>(path: string) => (row: Row<C>): P.Maybe<Match<C>> =>
+  P.map ((params: Params): Match<C> => ({ route: row.route, params })) (
     R.match (row.pattern) (path),
   )
 
@@ -232,9 +223,9 @@ const matchOf = <S, E>(path: string) => (row: Row<S, E>): P.Maybe<Match<S, E>> =
  * // => nothing()
  * ```
  */
-export function lookup<S, E = unknown>(t: Table<S, E>): (path: string) => P.Maybe<Match<S, E>> {
-  return (path: string): P.Maybe<Match<S, E>> =>
-    P.findMap (matchOf<S, E> (path)) (t.rows)
+export function lookup<C extends Context = Context>(t: Table<C>): (path: string) => P.Maybe<Match<C>> {
+  return (path: string): P.Maybe<Match<C>> =>
+    P.findMap (matchOf<C> (path)) (t.rows)
 }
 
 const escapedPath = (value: string): string =>

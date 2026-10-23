@@ -5,7 +5,7 @@ import type { Loaded, Route } from '../../../src/mod.ts'
 import type { Shelf } from '../records/books.ts'
 import type { Note } from '../records/notes.ts'
 import type { Reader } from '../records/readers.ts'
-import type { State } from '../state.ts'
+import type { App } from '../state.ts'
 import type { Row } from '../ui/listing.ts'
 import { data, page } from '../../../src/mod.ts'
 import { read } from '../answers.ts'
@@ -48,7 +48,7 @@ const welcome = (r: Reader) =>
 const greeting = (reader: P.Maybe<Reader>) =>
   P.maybe_ (comeIn) (welcome) (reader)
 
-export const home: Route<State> = page ({
+export const home: Route<App> = page ({
   pattern: '/',
   load: () => read (front ()) ((r: Read): Loaded<Read> => data (r)),
   head: () => ({ title: P.just ('Reading Room') }),

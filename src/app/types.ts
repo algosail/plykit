@@ -192,44 +192,44 @@ export type HeadPatch = {
 export type DocumentHead = HeadPatch
 
 /** What a route renders, given what its load produced. */
-export type PageView<D extends Json, S = unknown, E = unknown> = (
-  ctx: Context<S, E> & { readonly data: D },
+export type PageView<C extends Context = Context, Data extends Json = Json> = (
+  ctx: C & { readonly data: Data },
 ) => D.View
 
 /** What a page replaces in the document head, given the same context its view gets. A field it sets replaces the layout's, then the application's. A field it omits stays. */
-export type PageHead<D extends Json, S = unknown, E = unknown> = (
-  ctx: Context<S, E> & { readonly data: D },
+export type PageHead<C extends Context = Context, Data extends Json = Json> = (
+  ctx: C & { readonly data: Data },
 ) => HeadPatch
 
 /** What a failure renders. */
-export type ErrorView<S = unknown, E = unknown> = (
-  ctx: Context<S, E> & { readonly error: HttpError },
+export type ErrorView<C extends Context = Context> = (
+  ctx: C & { readonly error: HttpError },
 ) => D.View
 
 /** The chrome a page is drawn inside, as a page carries it: what it reads and what it draws. */
-export type Chrome<S = unknown, E = unknown> = {
-  readonly load: Load<Json, S, E>
+export type Chrome<C extends Context = Context, Data extends Json = Json> = {
+  readonly load: Load<C, Data>
   readonly view: (
-    ctx: Context<S, E> & { readonly data: Json; readonly slot: D.Child },
+    ctx: C & { readonly data: Data; readonly slot: D.Child },
   ) => D.View
   /** Fields this layout replaces. Omitted fields stay as the layout outside set them. */
-  readonly head?: (ctx: Context<S, E> & { readonly data: Json }) => HeadPatch
+  readonly head?: (ctx: C & { readonly data: Data }) => HeadPatch
 }
 
 /** Everything a layout needs: the markup around a page, and what that markup reads. */
-export type LayoutSpec<D extends Json = Json, S = unknown, E = unknown> = {
-  readonly load?: Load<D, S, E>
+export type LayoutSpec<C extends Context = Context, Data extends Json = Json> = {
+  readonly load?: Load<C, Data>
   readonly view: (
-    ctx: Context<S, E> & { readonly data: D; readonly slot: D.Child },
+    ctx: C & { readonly data: Data; readonly slot: D.Child },
   ) => D.View
   /** Fields this layout replaces on the routes it wraps. It sees what `load` read. */
-  readonly head?: (ctx: Context<S, E> & { readonly data: D }) => HeadPatch
+  readonly head?: (ctx: C & { readonly data: Data }) => HeadPatch
 }
 
 /** A layout, ready to use: it takes the routes it is for and hands them back wrapped. */
-export type Layout<S = unknown, E = unknown> = (
-  routes: Routes<S, E>,
-) => Route<S, E>[]
+export type Layout<C extends Context = Context> = (
+  routes: Routes<C>,
+) => Route<C>[]
 
 /** A body on its way out, with the status, headers and cookies it goes under. */
 export type Sent = {
@@ -270,42 +270,42 @@ export type Reply = Sent | Redirected | Failed
 export type Answer = Loaded<Json> | Reply
 
 /** A load function: an event in, a task of an outcome out. */
-export type Load<D extends Json, S = unknown, E = unknown> = (
-  ctx: Context<S, E>,
-) => F.Future<unknown, Loaded<D>>
+export type Load<C extends Context = Context, Data extends Json = Json> = (
+  ctx: C,
+) => F.Future<unknown, Loaded<Data>>
 
 /** What answers one method at one path. */
-export type Handler<S = unknown, E = unknown> = (
-  ctx: Context<S, E>,
+export type Handler<C extends Context = Context> = (
+  ctx: C,
 ) => F.Future<unknown, Reply>
 
 /** A route's handlers, by method. */
-export type Handlers<S = unknown, E = unknown> = {
-  readonly [M in Method]?: Handler<S, E>
+export type Handlers<C extends Context = Context> = {
+  readonly [M in Method]?: Handler<C>
 }
 
 /** A page's handler. */
-export type PageHandler<D extends Json, S = unknown, E = unknown> = (
-  ctx: Context<S, E>,
-) => F.Future<unknown, Reply | Loaded<D>>
+export type PageHandler<C extends Context = Context, Data extends Json = Json> = (
+  ctx: C,
+) => F.Future<unknown, Reply | Loaded<Data>>
 
 /** A page's handlers, by method. */
-export type PageHandlers<D extends Json = Json, S = unknown, E = unknown> = {
-  readonly [M in Method]?: PageHandler<D, S, E>
+export type PageHandlers<C extends Context = Context, Data extends Json = Json> = {
+  readonly [M in Method]?: PageHandler<C, Data>
 }
 
 /** Answering one request, whole: the context in, the reply out. */
-export type Answering<S = unknown, E = unknown> = (
-  ctx: Context<S, E>,
+export type Answering<C extends Context = Context> = (
+  ctx: C,
 ) => F.Future<unknown, Reply>
 
-/** A middleware that hands down a different state than it was asked for: given something that answers from an `S2`, it answers from an `S1`. */
-export type Wrapping<S1, S2 = S1, E = unknown> = (
-  next: Answering<S2, E>,
-) => Answering<S1, E>
+/** A middleware that hands the next step a different context than it was asked for: given something that answers from a `C2`, it answers from a `C1`. */
+export type Wrapping<C1 extends Context, C2 extends Context = C1> = (
+  next: Answering<C2>,
+) => Answering<C1>
 
 /** Something wrapped around the answering of a request. */
-export type Middleware<S = unknown, E = unknown> = Wrapping<S, S, E>
+export type Middleware<C extends Context = Context> = Wrapping<C, C>
 
 /** Whether a route can be written out as files, and at which addresses. */
 export type Still = {
@@ -314,37 +314,37 @@ export type Still = {
 }
 
 /** A path that renders markup, and whatever handlers answer beside it. */
-export type PageRoute<D extends Json = Json, S = unknown, E = unknown> = {
+export type PageRoute<C extends Context = Context, Data extends Json = Json> = {
   readonly tag: 'page'
   readonly id: string
   readonly pattern: string
-  readonly on: PageHandlers<D, S, E>
-  readonly load: Load<D, S, E>
-  readonly view: PageView<D, S, E>
-  readonly head?: PageHead<D, S, E>
+  readonly on: PageHandlers<C, Data>
+  readonly load: Load<C, Data>
+  readonly view: PageView<C, Data>
+  readonly head?: PageHead<C, Data>
   /** The layouts this page sits in, outermost first. */
-  readonly layouts: readonly Chrome<S, E>[]
+  readonly layouts: readonly Chrome<C>[]
   readonly still: Still
 }
 
 /** A path that answers with data and renders nothing. */
-export type Endpoint<S = unknown, E = unknown> = {
+export type Endpoint<C extends Context = Context> = {
   readonly tag: 'endpoint'
   readonly id: string
   readonly pattern: string
-  readonly on: Handlers<S, E>
+  readonly on: Handlers<C>
   readonly still: Still
   /** `'live'` when `liveRoute` built this endpoint. */
   readonly socket?: 'live'
 }
 
 /** One claim on a path. */
-export type Route<S = unknown, E = unknown> =
-  | PageRoute<Json, S, E>
-  | Endpoint<S, E>
+export type Route<C extends Context = Context> =
+  | PageRoute<C, Json>
+  | Endpoint<C>
 
 /** A list of routes in which what another layout produced may sit as it is. */
-export type Routes<S = unknown, E = unknown> = readonly (
-  | Route<S, E>
-  | readonly Route<S, E>[]
+export type Routes<C extends Context = Context> = readonly (
+  | Route<C>
+  | readonly Route<C>[]
 )[]

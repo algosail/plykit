@@ -8,7 +8,6 @@ import type { ServerNode } from '../document/node.ts'
 import type {
   Answering,
   Arrival,
-  Chrome,
   Context,
   DocumentHead,
   ErrorView,
@@ -35,31 +34,31 @@ import * as Rt from './router.ts'
 import { HttpError, messageOf } from './types.ts'
 
 /** What this request's state is made of, and when it has to be said. */
-export type Prepare<S> = unknown extends S ? { readonly state?: never }
-  : { readonly state: (request: Request) => F.Future<unknown, S> }
+export type Prepare<C extends Context> = unknown extends C['state'] ? { readonly state?: never }
+  : { readonly state: (request: Request) => F.Future<unknown, C['state']> }
 
 /** An answer worked out from the request and nothing else: a reply, or nothing to say about it. */
 export type Ahead = (request: Request) => P.Maybe<Reply>
 
 /** How to answer requests for an app. */
-export type Options<S = unknown, E = unknown> = Prepare<S> & {
-  readonly routes: Routes<S, E>
+export type Options<C extends Context = Context> = Prepare<C> & {
+  readonly routes: Routes<C>
   /** Where each island's chunk is served from, as `build` or `discover` reports it. */
   readonly chunks?: Manifest
   /** The document's language. */
-  readonly lang?: string | ((ctx: Context<S, E>) => string)
+  readonly lang?: string | ((ctx: C) => string)
   /** The document's writing direction, said only where it is not the default. */
   readonly dir?:
     | 'ltr'
     | 'rtl'
     | 'auto'
-    | ((ctx: Context<S, E>) => 'ltr' | 'rtl' | 'auto' | undefined)
+    | ((ctx: C) => 'ltr' | 'rtl' | 'auto' | undefined)
   /** The `<style>` tags for the head, given the markup they are for. */
   readonly styles?: (markup: string) => string
   /** What a failure renders. */
-  readonly error?: ErrorView<S, E>
+  readonly error?: ErrorView<C>
   /** What every answer goes through. */
-  readonly through?: readonly Middleware<S, E>[]
+  readonly through?: readonly Middleware<C>[]
   /** Answers that need nothing but the request: each is handed one and says a reply or says nothing. */
   readonly ahead?: readonly Ahead[]
   /** Default document head. A layout or a page replaces any field it sets. */
@@ -92,23 +91,23 @@ const asAsked = <A, B>(said: B | ((a: A) => B)): (a: A) => B =>
     (f: (a: A) => B) => f,
   ) (P.fromPredicate (P.isFunction) (said) as P.Maybe<(a: A) => B>)
 
-const pageOf = <S, E>(resolved: Resolve.Resolved<S, E>): D.View =>
+const pageOf = <C extends Context>(resolved: Resolve.Resolved<C>): D.View =>
   resolved.route.view ({ ...resolved.ctx, data: resolved.data })
 
-const outwards = (layouts: readonly Chrome<never>[]): readonly number[] =>
-  P.reverse (P.range (0) (layouts.length))
+const outwards = (count: number): readonly number[] =>
+  P.reverse (P.range (0) (count))
 
 const wrapping =
-  <S, E>(resolved: Resolve.Resolved<S, E>) => (slot: D.View, at: number): D.View =>
+  <C extends Context>(resolved: Resolve.Resolved<C>) => (slot: D.View, at: number): D.View =>
     resolved.route.layouts[at].view ({
       ...resolved.ctx,
       data: P.defaultTo<Json> ({}) (resolved.layoutData[at]),
       slot,
     })
 
-const inLayouts = <S, E>(resolved: Resolve.Resolved<S, E>): D.View =>
+const inLayouts = <C extends Context>(resolved: Resolve.Resolved<C>): D.View =>
   P.reduce (wrapping (resolved)) (pageOf (resolved)) (
-    outwards (resolved.route.layouts as readonly Chrome<never>[]),
+    outwards (resolved.route.layouts.length),
   )
 
 /** Markup, and the places in it a parser would rewrite. */
@@ -148,7 +147,7 @@ const toMarkup = (view: D.View): Markup => render (view, wholeOf)
  * // => '<div class="app">…</div>'
  * ```
  */
-export function renderToString<S, E = unknown>(resolved: Resolve.Resolved<S, E>): Rendered {
+export function renderToString<C extends Context = Context>(resolved: Resolve.Resolved<C>): Rendered {
   const markup = toMarkup (inLayouts (resolved))
   return {
     body: markup.body,
@@ -262,21 +261,21 @@ const inertMarkup =
     inertIn (placedIn (manifest) (markup, whole))
 
 /** Everything an app decided once, so nothing works it out per request. */
-type Serving<S, E> = {
-  readonly table: Rt.Table<S, E>
-  readonly langOf: (ctx: Context<S, E>) => string
-  readonly dirOf: (ctx: Context<S, E>) => 'ltr' | 'rtl' | 'auto' | undefined
+type Serving<C extends Context> = {
+  readonly table: Rt.Table<C>
+  readonly langOf: (ctx: C) => string
+  readonly dirOf: (ctx: C) => 'ltr' | 'rtl' | 'auto' | undefined
   readonly styles: (markup: string) => string
   readonly scripts: (markup: string) => readonly string[]
-  readonly drawError: ErrorView<S, E>
+  readonly drawError: ErrorView<C>
   readonly root: Head
   readonly dress: (head: Head) => Head
-  readonly state: (request: Request) => F.Future<unknown, S>
+  readonly state: (request: Request) => F.Future<unknown, C['state']>
   readonly inert: (markup: string, whole: boolean) => readonly Html.Hazard[]
   readonly told: (hazards: readonly Html.Hazard[], url: URL) => void
   readonly always: readonly string[]
   readonly ahead: readonly Ahead[]
-  readonly wrapped: Middleware<S, E>
+  readonly wrapped: Middleware<C>
 }
 
 const nothingTold = (
@@ -284,32 +283,32 @@ const nothingTold = (
   _url: URL,
 ): void => {}
 
-const noState = <S, E>(_request: Request): F.Future<unknown, S> =>
-  F.resolve (undefined as S)
+const noState = <C extends Context>(_request: Request): F.Future<unknown, C['state']> =>
+  F.resolve (undefined as C['state'])
 
-const declaredIn = <S, E>(
-  options: Options<S, E>,
-): ((request: Request) => F.Future<unknown, S>) | undefined =>
-  (options as { readonly state?: (r: Request) => F.Future<unknown, S> }).state
+const declaredIn = <C extends Context>(
+  options: Options<C>,
+): ((request: Request) => F.Future<unknown, C['state']>) | undefined =>
+  (options as { readonly state?: (r: Request) => F.Future<unknown, C['state']> }).state
 
 /** One request and the app answering it, before anything has been built. */
-type Asking<S, E> = {
-  readonly app: Serving<S, E>
+type Asking<C extends Context> = {
+  readonly app: Serving<C>
   readonly request: Request
-  readonly from: Arrival<E>
+  readonly from: Arrival<C['env']>
 }
 
 /** The same, once the state is built and the route is found. */
-type Aiming<S, E> = Asking<S, E> & { readonly aimed: Resolve.Aimed<S, E> }
+type Aiming<C extends Context> = Asking<C> & { readonly aimed: Resolve.Aimed<C> }
 
 const askingOf =
-  <S, E>(app: Serving<S, E>) => (request: Request, from?: Arrival<E>): Asking<S, E> => ({
+  <C extends Context>(app: Serving<C>) => (request: Request, from?: Arrival<C['env']>): Asking<C> => ({
     app,
     request,
     from: from ?? {},
   })
 
-const aiming = <S, E>(one: Asking<S, E>) => (state: S): Aiming<S, E> => ({
+const aiming = <C extends Context>(one: Asking<C>) => (state: C['state']): Aiming<C> => ({
   ...one,
   aimed: Resolve.aim (one.app.table) (state) (one.request, one.from),
 })
@@ -341,34 +340,34 @@ const dressOf =
       ? head
       : { ...head, link: P.prepend (styleLink) (tagsOf (head.link)) }
 
-const servingOf = <S, E>(options: Options<S, E>): Serving<S, E> => ({
+const servingOf = <C extends Context>(options: Options<C>): Serving<C> => ({
   table: Rt.table (options.routes),
-  langOf: asAsked<Context<S, E>, string> (
-    P.defaultTo<string | ((ctx: Context<S, E>) => string)> ('en') (options.lang),
+  langOf: asAsked<C, string> (
+    P.defaultTo<string | ((ctx: C) => string)> ('en') (options.lang),
   ),
-  dirOf: asAsked<Context<S, E>, 'ltr' | 'rtl' | 'auto' | undefined> (options.dir),
+  dirOf: asAsked<C, 'ltr' | 'rtl' | 'auto' | undefined> (options.dir),
   styles: P.defaultTo (collectStyles) (options.styles),
   scripts: islandScripts (P.defaultTo<Manifest> ({}) (options.chunks)),
-  drawError: P.defaultTo<ErrorView<S, E>> (plainly) (options.error),
+  drawError: P.defaultTo<ErrorView<C>> (plainly) (options.error),
   root: rootOf (options.head),
   dress: dressOf (options.styleLink),
-  state: P.defaultTo (noState<S, E>) (declaredIn (options)),
+  state: P.defaultTo (noState<C>) (declaredIn (options)),
   inert: inertMarkup (P.defaultTo<Manifest> ({}) (options.chunks)),
   told: P.defaultTo (nothingTold) (options.onHazard),
   always: P.defaultTo<readonly string[]> ([]) (options.always),
   ahead: P.defaultTo<readonly Ahead[]> ([]) (options.ahead),
-  wrapped: Mw.stack (P.defaultTo<readonly Middleware<S, E>[]> ([]) (options.through)),
+  wrapped: Mw.stack (P.defaultTo<readonly Middleware<C>[]> ([]) (options.through)),
 })
 
 const sending = (markup: string) => (status: number): Reply =>
   Rp.status (status) (Rp.vary (Part.PART_HEADER) (Rp.html (markup)))
 
-const scriptsFor = <S, E>(at: Serving<S, E>) => (body: string): readonly string[] =>
+const scriptsFor = <C extends Context>(at: Serving<C>) => (body: string): readonly string[] =>
   P.concat (at.scripts (body)) (at.always)
 
 const document =
-  <S, E>(at: Serving<S, E>) =>
-  (ctx: Context<S, E>) =>
+  <C extends Context>(at: Serving<C>) =>
+  (ctx: C) =>
   (head: Head) =>
   (markup: Markup): (status: number) => Reply =>
     sending (Shell.document ({
@@ -381,7 +380,7 @@ const document =
     }))
 
 const fragment =
-  <S, E>(at: Serving<S, E>) => (markup: Markup): (status: number) => Reply =>
+  <C extends Context>(at: Serving<C>) => (markup: Markup): (status: number) => Reply =>
     sending (
       P.mconcat (P.Concat) ([
         at.styles (markup.body),
@@ -391,12 +390,12 @@ const fragment =
     )
 
 const hazardsIn =
-  <S, E>(at: Serving<S, E>) => (picked: Picked): readonly Html.Hazard[] =>
+  <C extends Context>(at: Serving<C>) => (picked: Picked): readonly Html.Hazard[] =>
     P.concat (picked.hazards) (at.inert (picked.body, !picked.part))
 
 const telling =
-  <S, E>(at: Serving<S, E>) =>
-  (resolved: Resolve.Resolved<S, E>) =>
+  <C extends Context>(at: Serving<C>) =>
+  (resolved: Resolve.Resolved<C>) =>
   (said: readonly Html.Hazard[]): void =>
     void P.unless<readonly Html.Hazard[]> (P.isEmpty) (
       (all: readonly Html.Hazard[]) => {
@@ -406,7 +405,7 @@ const telling =
     ) (said)
 
 const layoutHead =
-  <S, E>(resolved: Resolve.Resolved<S, E>) => (head: Head, index: number): Head =>
+  <C extends Context>(resolved: Resolve.Resolved<C>) => (head: Head, index: number): Head =>
     over (head) (
       resolved.route.layouts[index].head?. ({
         ...resolved.ctx,
@@ -416,7 +415,7 @@ const layoutHead =
 
 /** The root, then each layout from the outside in, then the page. */
 const headFor =
-  <S, E>(at: Serving<S, E>) => (resolved: Resolve.Resolved<S, E>): Head =>
+  <C extends Context>(at: Serving<C>) => (resolved: Resolve.Resolved<C>): Head =>
     over (
       P.reduce (layoutHead (resolved)) (at.root) (
         P.range (0) (resolved.route.layouts.length),
@@ -424,17 +423,17 @@ const headFor =
     ) (resolved.route.head?. ({ ...resolved.ctx, data: resolved.data }))
 
 const asDocument =
-  <S, E>(at: Serving<S, E>) =>
-  (resolved: Resolve.Resolved<S, E>) =>
+  <C extends Context>(at: Serving<C>) =>
+  (resolved: Resolve.Resolved<C>) =>
   (picked: Picked): Reply =>
     document (at) (resolved.ctx) (headFor (at) (resolved)) (picked) (resolved.status)
 
 const asFragment =
-  <S, E>(at: Serving<S, E>) =>
-  (resolved: Resolve.Resolved<S, E>) =>
+  <C extends Context>(at: Serving<C>) =>
+  (resolved: Resolve.Resolved<C>) =>
   (picked: Picked): Reply => fragment (at) (picked) (resolved.status)
 
-const drawn = <S, E>(at: Serving<S, E>) => (resolved: Resolve.Resolved<S, E>): Reply => {
+const drawn = <C extends Context>(at: Serving<C>) => (resolved: Resolve.Resolved<C>): Reply => {
   const picked = render (
     inLayouts (resolved),
     pickFor (resolved.ctx.request),
@@ -446,7 +445,7 @@ const drawn = <S, E>(at: Serving<S, E>) => (resolved: Resolve.Resolved<S, E>): R
 }
 
 const apology =
-  <S, E>(at: Serving<S, E>) => (ctx: Context<S, E>) => (refusal: Failed): Reply =>
+  <C extends Context>(at: Serving<C>) => (ctx: C) => (refusal: Failed): Reply =>
     Rp.onto (refusal) (
       document (at) (ctx) (
         over (at.root) ({ title: P.just (String (refusal.error.status)) }),
@@ -455,26 +454,26 @@ const apology =
       ),
     )
 
-const wantsPage = <S, E>(aimed: Resolve.Aimed<S, E>): boolean =>
-  P.maybe_ (() => true) ((one: Route<S, E>) => one.tag === 'page') (aimed.route)
+const wantsPage = <C extends Context>(aimed: Resolve.Aimed<C>): boolean =>
+  P.maybe_ (() => true) ((one: Route<C>) => one.tag === 'page') (aimed.route)
 
 const isRefusal = (reply: Reply): reply is Failed => reply.tag === 'failure'
 
 const asApology =
-  <S, E>(at: Serving<S, E>) => (ctx: Context<S, E>) => (reply: Reply): Reply =>
+  <C extends Context>(at: Serving<C>) => (ctx: C) => (reply: Reply): Reply =>
     P.maybe_ (P.K (reply)) (apology (at) (ctx)) (
       P.fromPredicate (isRefusal) (reply),
     )
 
-const asPage = <S, E>(one: Aiming<S, E>): (reply: Reply) => Reply =>
+const asPage = <C extends Context>(one: Aiming<C>): (reply: Reply) => Reply =>
   P.boolean<(reply: Reply) => Reply> (P.I<Reply>) (
     asApology (one.app) (one.aimed.ctx),
   ) (wantsPage (one.aimed))
 
-const bareContext = <S, E>(one: Asking<S, E>): Context<S, E> =>
-  Resolve.contextOf<S, E> (one.request, undefined as S, one.from, {}, '')
+const bareContext = <C extends Context>(one: Asking<C>): C =>
+  Resolve.contextOf<C> (one.request, undefined as C['state'], one.from, {}, '')
 
-const unprepared = <S, E>(one: Asking<S, E>) => (err: unknown): Reply => {
+const unprepared = <C extends Context>(one: Asking<C>) => (err: unknown): Reply => {
   const bare = bareContext (one)
   const error = new HttpError (500, messageOf (err))
   return document (one.app) (bare) (
@@ -482,8 +481,8 @@ const unprepared = <S, E>(one: Asking<S, E>) => (err: unknown): Reply => {
   ) (toMarkup (plainly ({ ...bare, error }))) (500)
 }
 
-const answered = <S, E>(app: Serving<S, E>) => (outcome: Resolve.Outcome<S, E>): Reply =>
-  P.cases<Resolve.Outcome<S, E>, Reply> ({
+const answered = <C extends Context>(app: Serving<C>) => (outcome: Resolve.Outcome<C>): Reply =>
+  P.cases<Resolve.Outcome<C>, Reply> ({
     resolved: (one) => drawn (app) (one.resolved),
     replied: (one) => one.reply,
   }) (outcome)
@@ -491,43 +490,43 @@ const answered = <S, E>(app: Serving<S, E>) => (outcome: Resolve.Outcome<S, E>):
 const encasing = <A, B>(f: (a: A) => B) => (a: A): F.Future<unknown, B> =>
   F.attempt (() => f (a))
 
-const answering = <S, E>(one: Aiming<S, E>): Answering<S, E> =>
-  one.app.wrapped ((ctx: Context<S, E>) =>
+const answering = <C extends Context>(one: Aiming<C>): Answering<C> =>
+  one.app.wrapped ((ctx: C) =>
     P.chain (encasing (answered (one.app))) (Resolve.run (one.aimed.route) (ctx)),
   )
 
-const paged = <S, E>(one: Aiming<S, E>): F.Future<unknown, Reply> =>
+const paged = <C extends Context>(one: Aiming<C>): F.Future<unknown, Reply> =>
   P.map (asPage (one)) (answering (one) (one.aimed.ctx))
 
-const orPlainly = <S, E>(
-  one: Aiming<S, E>,
+const orPlainly = <C extends Context>(
+  one: Aiming<C>,
 ): (both: P.Either<unknown, Reply>) => Reply =>
   P.either (unprepared (one)) (P.I<Reply>)
 
-const drawing = <S, E>(one: Aiming<S, E>): F.Future<unknown, Reply> =>
+const drawing = <C extends Context>(one: Aiming<C>): F.Future<unknown, Reply> =>
   P.map (orPlainly (one)) (
     F.coalesce (P.left<unknown, Reply>) (P.right<unknown, Reply>) (paged (one)),
   )
 
-const drawingFor = <S, E>(
-  one: Asking<S, E>,
-): (state: S) => F.Future<unknown, Reply> => P.pipe ([aiming (one), drawing])
+const drawingFor = <C extends Context>(
+  one: Asking<C>,
+): (state: C['state']) => F.Future<unknown, Reply> => P.pipe ([aiming (one), drawing])
 
 const asUnprepared =
-  <S, E>(one: Asking<S, E>) => (err: unknown): F.Future<unknown, Reply> =>
+  <C extends Context>(one: Asking<C>) => (err: unknown): F.Future<unknown, Reply> =>
     F.resolve (unprepared (one) (err))
 
-const prepared = <S, E>(one: Asking<S, E>): F.Future<unknown, Reply> =>
+const prepared = <C extends Context>(one: Asking<C>): F.Future<unknown, Reply> =>
   P.chain (P.either (asUnprepared (one)) (drawingFor (one))) (
-    F.coalesce (P.left<unknown, S>) (P.right<unknown, S>) (
+    F.coalesce (P.left<unknown, C['state']>) (P.right<unknown, C['state']>) (
       one.app.state (one.request),
     ),
   )
 
-const asking = <S, E>(one: Asking<S, E>) => (way: Ahead): P.Maybe<Reply> =>
+const asking = <C extends Context>(one: Asking<C>) => (way: Ahead): P.Maybe<Reply> =>
   way (one.request)
 
-const replying = <S, E>(one: Asking<S, E>): F.Future<unknown, Reply> =>
+const replying = <C extends Context>(one: Asking<C>): F.Future<unknown, Reply> =>
   P.maybe_ (() => prepared (one)) ((reply: Reply) =>
     F.resolve<unknown, Reply> (reply),
   ) (P.findMap (asking (one)) (one.app.ahead))
@@ -541,11 +540,11 @@ const replying = <S, E>(one: Asking<S, E>): F.Future<unknown, Reply> =>
  * // => { tag: 'sent', status: 200, headers: { … }, body: '<!doctype html>…' }
  * ```
  */
-export function answer<S = unknown, E = unknown>(
-  options: Options<S, E>,
-): (request: Request, from?: Arrival<E>) => F.Future<unknown, Reply> {
+export function answer<C extends Context = Context>(
+  options: Options<C>,
+): (request: Request, from?: Arrival<C['env']>) => F.Future<unknown, Reply> {
   const asking = askingOf (servingOf (options))
-  return (request: Request, from?: Arrival<E>): F.Future<unknown, Reply> =>
+  return (request: Request, from?: Arrival<C['env']>): F.Future<unknown, Reply> =>
     replying (asking (request, from))
 }
 
@@ -568,12 +567,12 @@ export const sendingOut: (reply: Reply) => Response = P.pipe ([
  * listen (handler ({ routes: group (shell) ([home, about]) }))
  * ```
  */
-export function handler<S = unknown, E = unknown>(
-  options: Options<S, E>,
-): (request: Request, from?: Arrival<E>) => Promise<Response> {
+export function handler<C extends Context = Context>(
+  options: Options<C>,
+): (request: Request, from?: Arrival<C['env']>) => Promise<Response> {
   const claim = liveClaimFor (Rt.flat (options.routes))
   const answers = answer (options)
-  return (request: Request, from?: Arrival<E>): Promise<Response> =>
+  return (request: Request, from?: Arrival<C['env']>): Promise<Response> =>
     P.maybe_ (
       () => F.promise (P.map (sendingOut) (answers (request, from))),
     ) ((res: Response) => Promise.resolve (res)) (claim (request))

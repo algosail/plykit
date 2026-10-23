@@ -3,8 +3,8 @@ import * as H from '@algosail/plydom/h'
 import * as F from '@algosail/plyfuture'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { Config, Loaded, Route } from '../src/mod.ts'
-import type { State } from './fixture/app.ts'
+import type { Config, Context, Loaded, Route } from '../src/mod.ts'
+import type { App } from './fixture/app.ts'
 import { build, discover, report } from '../src/build/build.ts'
 import { readText, writeText } from '../src/fs/disk.ts'
 import {
@@ -87,7 +87,7 @@ test ('kit/server — the head gets the same context as the view', async () => {
 
 test ('kit/server — the head sees both the captures and the state', async () => {
   const seen: string[] = []
-  const spy: Route<State> = page ({
+  const spy: Route<App> = page ({
     pattern: '/head/:slug',
     load: () => F.resolve (data ({})),
     head: (ctx) => {
@@ -108,7 +108,7 @@ test ('kit/server — the head sees both the captures and the state', async () =
 })
 
 test ('kit/server — a page and a layout replace the fields they set', async () => {
-  const shelf = layout<{ readonly shelf: string }> ({
+  const shelf = layout<Context, { readonly shelf: string }> ({
     load: () => F.resolve (data ({ shelf: 'Books' })),
     head: (ctx) => ({ title: P.just (ctx.data.shelf) }),
     view: (ctx) => H.div ([ctx.slot]),
@@ -226,7 +226,7 @@ test ('kit/server — a page and a layout replace the fields they set', async ()
   assert.ok ((missing).includes ('href="/static/styles.css"'))
   assert.ok ((missing).includes ('href="/_kit/styles.css"'))
 
-  const quiet = page<Record<string, never>, string> ({
+  const quiet = page<Context<string>> ({
     pattern: '/bare',
     view: () => H.p (['bare']),
   })
@@ -269,7 +269,7 @@ test ('kit/server — its own error view covers both a 404 and a refusal from lo
 
 test ('kit/server — a deferred load: both a refusal and a throw', async () => {
   const late = (after: () => Loaded<Record<string, never>>): Route =>
-    page<Record<string, never>> ({
+    page ({
       pattern: '/late',
       load: () =>
         P.chain ((_done: void) => F.resolve (after ())) (
@@ -294,7 +294,7 @@ test ('kit/server — a deferred load: both a refusal and a throw', async () => 
 })
 
 test ('kit/server — a redirect answers with Location and no body', async () => {
-  const away: Route = page<Record<string, never>> ({
+  const away: Route<App> = page<App> ({
     pattern: '/old',
     load: () => F.resolve (redirect ('/about', 302)),
     view: () => H.p (['should not be drawn']),
@@ -468,7 +468,7 @@ test ('kit/app — without live that path is not there', () =>
 
 test ('kit/app — a route of your own on the same path stays yours', () =>
   inDir (async (outDir) => {
-    const mine: Route<State> = endpoint ({
+    const mine: Route<App> = endpoint ({
       pattern: '/live',
       on: { GET: () => F.resolve (text ('mine')) },
     })
@@ -484,7 +484,7 @@ test ('kit/app — a route of your own on the same path stays yours', () =>
     assert.deepStrictEqual (await res.text (), 'mine')
   }))
 
-const shouting: Route<State> = endpoint ({
+const shouting: Route<App> = endpoint ({
   pattern: '/api/who',
   on: {
     GET: () => F.resolve (withHeader ('x-who') ('anya—') (json ({ ok: true }))),
@@ -577,7 +577,7 @@ test ('kit/app — dev, build, and serve take the same object', () =>
 
 test ('kit/router — a layout reads its own, and reads it along with the page', async () => {
   const started: number[] = []
-  const shell = layout<{ who: string }> ({
+  const shell = layout<Context, { who: string }> ({
     load: () => {
       started.push (Date.now ())
       return P.map (() => data ({ who: 'menu' })) (
@@ -608,7 +608,7 @@ test ('kit/router — a layout reads its own, and reads it along with the page',
 
 test ('kit/router — a layout that refused answers for the page', async () => {
   let drew = false
-  const guarded = layout<Record<string, never>> ({
+  const guarded = layout ({
     load: () => F.resolve (redirect ('/enter')),
     view: (ctx) => H.div ([ctx.slot]),
   })
@@ -630,12 +630,12 @@ test ('kit/router — a layout that refused answers for the page', async () => {
 })
 
 test ('kit/router — layouts nest, each with its own', async () => {
-  const outer = layout<{ a: string }> ({
+  const outer = layout<Context, { a: string }> ({
     load: () => F.resolve (data ({ a: 'outside' })),
     view: (ctx) =>
       H.div ({ class: 'outer' }, [H.strong ([ctx.data.a]), ctx.slot]),
   })
-  const middle = layout<{ b: string }> ({
+  const middle = layout<Context, { b: string }> ({
     load: () => F.resolve (data ({ b: 'inside' })),
     view: (ctx) => H.div ({ class: 'inner' }, [H.em ([ctx.data.b]), ctx.slot]),
   })

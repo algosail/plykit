@@ -6,7 +6,7 @@ import type { Loaded, Route } from '../../../src/mod.ts'
 import type { Book } from '../records/books.ts'
 import type { Loan } from '../records/loans.ts'
 import type { Reader } from '../records/readers.ts'
-import type { State } from '../state.ts'
+import type { App } from '../state.ts'
 import type { Row } from '../ui/listing.ts'
 import { data, page, part } from '../../../src/mod.ts'
 import { read } from '../answers.ts'
@@ -74,7 +74,7 @@ const asRow =
     doing: returnIfTheirs (reader) (request) (one),
   })
 
-export const desk: Route<State> = page ({
+export const desk: Route<App> = page ({
   pattern: '/desk',
   load: () =>
     read (outNow ()) ((out: readonly Out[]): Loaded<Read> => data ({ out })),

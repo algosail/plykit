@@ -1,7 +1,7 @@
 import * as P from '@algosail/ply'
 import * as F from '@algosail/plyfuture'
 import type { Config } from '../app/config.ts'
-import type { Route } from '../app/types.ts'
+import type { Context, Route } from '../app/types.ts'
 import type { DirEntry } from '../fs/disk.ts'
 import type { StaticOptions } from '../fs/static.ts'
 import { addressesOf } from '../app/data.ts'
@@ -86,28 +86,28 @@ const asDocument = (names: Names) => (path: string): string =>
   )
 
 const fileFor =
-  (names: Names) => (route: Route<never>) => (path: string): string =>
-    P.cases<Route<never>, string> ({
+  (names: Names) => (route: Route<Context>) => (path: string): string =>
+    P.cases<Route<Context>, string> ({
       endpoint: P.K (path.slice (1)),
       page: P.K (asDocument (names) (path)),
     }) (route)
 
-const isEndpointWithoutGet = (route: Route<never>): boolean =>
+const isEndpointWithoutGet = (route: Route<Context>): boolean =>
   route.tag === 'endpoint' && route.on.GET === undefined
 
-const alsoAnswers = (route: Route<never>): boolean =>
+const alsoAnswers = (route: Route<Context>): boolean =>
   route.tag === 'page' && P.sortedKeys (route.on).length > 0
 
 const skippedIf = (yes: boolean) => (why: () => Skipped): P.Maybe<Skipped> =>
   P.map ((_: true) => why ()) (P.fromPredicate (P.isTrue) (yes))
 
-const nothingToWrite = (route: Route<never>): P.Maybe<Skipped> =>
+const nothingToWrite = (route: Route<Context>): P.Maybe<Skipped> =>
   skippedIf (isEndpointWithoutGet (route)) (() => ({
     pattern: route.pattern,
     why: 'no GET',
   }))
 
-const onlyGetSurvives = (route: Route<never>): P.Maybe<Skipped> =>
+const onlyGetSurvives = (route: Route<Context>): P.Maybe<Skipped> =>
   skippedIf (alsoAnswers (route)) (() => ({
     pattern: route.pattern,
     why: `only GET is written to files; ${
@@ -115,7 +115,7 @@ const onlyGetSurvives = (route: Route<never>): P.Maybe<Skipped> =>
     } will not answer on a static site`,
   }))
 
-const noteOn = (route: Route<never>): Done =>
+const noteOn = (route: Route<Context>): Done =>
   P.maybe_ (P.K (nothingDone)) (onlySkipped) (onlyGetSurvives (route))
 
 /** Everything the writing needs, worked out once. */
@@ -152,7 +152,7 @@ const puttingIn =
 
 const writtenAt =
   (at: Writing) =>
-  (route: Route<never>) =>
+  (route: Route<Context>) =>
   (path: string): F.Future<unknown, Done> => {
     const file = fileFor (at.names) (route) (path)
     return P.map ((bytes: number) => onlyWritten ({ path, file, bytes })) (
@@ -162,36 +162,36 @@ const writtenAt =
     )
   }
 
-const addressesIn = <S>(
-  route: Route<S>,
+const addressesIn = <C extends Context>(
+  route: Route<C>,
 ): F.Future<unknown, readonly string[]> => F.attemptP (() => addressesOf (route))
 
 const writtenFor =
-  (at: Writing) => (route: Route<never>): F.Future<unknown, Done> =>
+  (at: Writing) => (route: Route<Context>): F.Future<unknown, Done> =>
     P.map (allDone) (
       P.chain ((paths: readonly string[]) =>
         F.parallel (1) (P.map (writtenAt (at) (route)) (paths)),
       ) (addressesIn (route)),
     )
 
-const withNote = (route: Route<never>) => (one: Done): Done =>
+const withNote = (route: Route<Context>) => (one: Done): Done =>
   allDone ([noteOn (route), one])
 
 const doneWith =
-  (at: Writing) => (route: Route<never>): F.Future<unknown, Done> =>
+  (at: Writing) => (route: Route<Context>): F.Future<unknown, Done> =>
     P.maybe_ (
       () => P.map (withNote (route)) (writtenFor (at) (route)),
     ) (
       (one: Skipped) => F.resolve (onlySkipped (one)),
     ) (nothingToWrite (route))
 
-const isStill = (route: Route<never>): boolean => route.still.on
+const isStill = (route: Route<Context>): boolean => route.still.on
 
-const stillIn = (routes: readonly Route<never>[]): readonly Route<never>[] =>
+const stillIn = (routes: readonly Route<Context>[]): readonly Route<Context>[] =>
   P.filter (isStill) (routes)
 
 const everythingIn =
-  (at: Writing) => (routes: readonly Route<never>[]): F.Future<unknown, Done> =>
+  (at: Writing) => (routes: readonly Route<Context>[]): F.Future<unknown, Done> =>
     P.map (allDone) (F.parallel (1) (P.map (doneWith (at)) (stillIn (routes))))
 
 const pathOf = (pre: string) => (entry: DirEntry): string =>
@@ -274,7 +274,7 @@ const withMissing =
 const writingAll =
   (at: Writing) =>
   (path: string) =>
-  (routes: readonly Route<never>[]): F.Future<unknown, Done> =>
+  (routes: readonly Route<Context>[]): F.Future<unknown, Done> =>
     P.chain (withMissing (at) (path)) (everythingIn (at) (routes))
 
 /**
@@ -286,8 +286,8 @@ const writingAll =
  * console.log (siteReport (done))
  * ```
  */
-export async function staticSite<S = unknown>(
-  config: Config<S>,
+export async function staticSite<C extends Context = Context>(
+  config: Config<C>,
   options: SiteOptions,
 ): Promise<Site> {
   const out = directory (options.out)
@@ -304,7 +304,7 @@ export async function staticSite<S = unknown>(
       F.attemptP (() => answer (new Request (`http://kit.local${path}`))),
   }
 
-  const routes = flat (config.routes) as readonly Route<never>[]
+  const routes = flat (config.routes) as readonly Route<Context>[]
   const done = await F.promise<unknown, Done> (
     writingAll (at) (P.defaultTo (MISSING) (options.missing)) (routes),
   )
@@ -321,11 +321,11 @@ export async function staticSite<S = unknown>(
 const andThen = (pages: Done) => (missing: Done): Done =>
   allDone ([pages, missing])
 
-const besideBase = <S>(config: Config<S>): string =>
+const besideBase = <C extends Context>(config: Config<C>): string =>
   P.defaultTo (CHUNK_BASE) (config.base).replace (/^\//, '')
 
-const besideFor = async <S>(
-  config: Config<S>,
+const besideFor = async <C extends Context>(
+  config: Config<C>,
   out: URL,
 ): Promise<readonly string[]> => {
   const chunks = await chunkDir (config, false)
@@ -340,8 +340,8 @@ const besideFor = async <S>(
 
 const keepAll = (_: string): boolean => true
 
-function besideAssets<S>(
-  config: Config<S>,
+function besideAssets<C extends Context>(
+  config: Config<C>,
   out: URL,
   chunks: string,
 ): Promise<readonly string[]> {

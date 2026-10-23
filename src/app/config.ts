@@ -1,14 +1,14 @@
 import type { KitIsland } from '../build/build.ts'
 import type { StaticOptions } from '../fs/static.ts'
 import type { Options as HandlerOptions } from './server.ts'
-import type { Middleware } from './types.ts'
+import type { Context, Middleware } from './types.ts'
 
-type Given<S, E> = Omit<HandlerOptions<S, E>, 'chunks' | 'through' | 'styleLink'>
+type Given<C extends Context> = Omit<HandlerOptions<C>, 'chunks' | 'through' | 'styleLink'>
 
 /** How to run an app. */
-export type Options<S = unknown, E = unknown> = Given<S, E> & {
+export type Options<C extends Context = Context> = Given<C> & {
   /** What every page and every endpoint goes through — the list `answer` takes, in the same order: the first is the outermost. */
-  readonly through?: readonly Middleware<S, E>[]
+  readonly through?: readonly Middleware<C>[]
   /** Where the island chunks are written. */
   readonly outDir?: URL | string
   /** The URL prefix the chunks are served under. */
@@ -25,4 +25,4 @@ export type Options<S = unknown, E = unknown> = Given<S, E> & {
 }
 
 /** How an app is written down: exactly the options the Node host and `worker` take. */
-export type Config<S = unknown, E = unknown> = Options<S, E>
+export type Config<C extends Context = Context> = Options<C>

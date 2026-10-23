@@ -2,7 +2,7 @@ import * as P from '@algosail/ply'
 import * as F from '@algosail/plyfuture'
 import type { Handler, Reply, Route } from '../../../src/mod.ts'
 import type { Reader } from '../records/readers.ts'
-import type { State } from '../state.ts'
+import type { App } from '../state.ts'
 import { endpoint, localPath, readFields, redirect } from '../../../src/mod.ts'
 import * as Readers from '../records/readers.ts'
 import * as Session from '../session.ts'
@@ -41,7 +41,7 @@ const signingOut =
       )
       (reader)
 
-const posted: Handler<State> = (ctx) =>
+const posted: Handler<App> = (ctx) =>
   P.chain ((fields: Readonly<P.StrMap<string>>) =>
     P.maybe_
       (() => signingIn (fields))
@@ -49,9 +49,9 @@ const posted: Handler<State> = (ctx) =>
       (P.lookup ('exit') (fields)),
   ) (readFields (ctx.request))
 
-const sendHome: Handler<State> = () => F.resolve (redirect ('/'))
+const sendHome: Handler<App> = () => F.resolve (redirect ('/'))
 
-export const reader: Route<State> = endpoint ({
+export const reader: Route<App> = endpoint ({
   pattern: '/reader',
   on: { GET: sendHome, POST: posted },
 })

@@ -4,7 +4,7 @@ import type { Config, Options } from '../app/config.ts'
 import type { Prebuilt } from '../app/data.ts'
 import type { Options as HandlerOptions } from '../app/server.ts'
 import type { Draws } from '../app/stand.ts'
-import type { Arrival, Reply, Route } from '../app/types.ts'
+import type { Arrival, Context, Reply, Route } from '../app/types.ts'
 import type {
   Options as BuildOptions,
   Built,
@@ -68,99 +68,99 @@ const asFound = (manifest: Manifest) => (sheet: Sheet): Made => ({
 })
 
 /** The options, and the two things every step below needs worked out from them. */
-type Placed<S, E> = {
-  readonly options: Options<S, E>
+type Placed<C extends Context> = {
+  readonly options: Options<C>
   readonly base: string
   readonly outDir: string
 }
 
-const builds = <S, E>(options: Options<S, E>): boolean => options.build !== false
+const builds = <C extends Context>(options: Options<C>): boolean => options.build !== false
 
-const whereIn = <S, E>(at: Placed<S, E>): Where => ({
+const whereIn = <C extends Context>(at: Placed<C>): Where => ({
   outDir: at.outDir,
   base: at.base,
   include: at.options.include,
 })
 
-const buildingIn = <S, E>(at: Placed<S, E>): BuildOptions<S> => ({
+const buildingIn = <C extends Context>(at: Placed<C>): BuildOptions<C> => ({
   ...whereIn (at),
   outDir: at.outDir,
   minify: at.options.minify,
   extract: at.options.styles === undefined,
 })
 
-const asPlaced = <S, E>(options: Options<S, E>) => (outDir: string): Placed<S, E> => ({
+const asPlaced = <C extends Context>(options: Options<C>) => (outDir: string): Placed<C> => ({
   options,
   base: P.defaultTo (BASE) (options.base),
   outDir,
 })
 
-const placing = <S, E>(options: Options<S, E>): F.Future<unknown, Placed<S, E>> =>
+const placing = <C extends Context>(options: Options<C>): F.Future<unknown, Placed<C>> =>
   P.map (asPlaced (options)) (
     F.attemptP (() => chunkDir (options, builds (options))),
   )
 
-const building = <S, E>(at: Placed<S, E>): F.Future<unknown, Made> =>
+const building = <C extends Context>(at: Placed<C>): F.Future<unknown, Made> =>
   P.map (asBuilt) (F.attemptP (() => build (buildingIn (at))))
 
-const finding = <S, E>(at: Placed<S, E>): F.Future<unknown, Made> =>
+const finding = <C extends Context>(at: Placed<C>): F.Future<unknown, Made> =>
   P.lift2 (asFound) (F.attemptP (() => discover (whereIn (at)))) (
     lastSheet (at.outDir, at.base),
   )
 
-const eitherWay = <S, E>(at: Placed<S, E>): F.Future<unknown, Made> =>
+const eitherWay = <C extends Context>(at: Placed<C>): F.Future<unknown, Made> =>
   P.boolean (finding (at)) (building (at)) (builds (at.options))
 
-const madeIn = <S, E>(at: Placed<S, E>): F.Future<unknown, Made> =>
+const madeIn = <C extends Context>(at: Placed<C>): F.Future<unknown, Made> =>
   P.map (warned) (eitherWay (at))
 
 /** The same, once the islands are built or found. */
-type Making<S, E> = Placed<S, E> & { readonly made: Made }
+type Making<C extends Context> = Placed<C> & { readonly made: Made }
 
-const withMade = <S, E>(at: Placed<S, E>) => (made: Made): Making<S, E> => ({
+const withMade = <C extends Context>(at: Placed<C>) => (made: Made): Making<C> => ({
   ...at,
   made,
 })
 
-const making = <S, E>(at: Placed<S, E>): F.Future<unknown, Making<S, E>> =>
+const making = <C extends Context>(at: Placed<C>): F.Future<unknown, Making<C>> =>
   P.map (withMade (at)) (madeIn (at))
 
 const nothingRead: F.Future<unknown, P.Maybe<Prebuilt>> = F.resolve (
   P.nothing<Prebuilt> (),
 )
 
-const reads = <S, E>(options: Options<S, E>): boolean => options.prebuilt !== false
+const reads = <C extends Context>(options: Options<C>): boolean => options.prebuilt !== false
 
-const reading = <S, E>(at: Making<S, E>): F.Future<unknown, P.Maybe<Prebuilt>> =>
+const reading = <C extends Context>(at: Making<C>): F.Future<unknown, P.Maybe<Prebuilt>> =>
   F.attemptP (() => readPrebuilt (at.outDir))
 
-const readIn = <S, E>(at: Making<S, E>): F.Future<unknown, P.Maybe<Prebuilt>> =>
+const readIn = <C extends Context>(at: Making<C>): F.Future<unknown, P.Maybe<Prebuilt>> =>
   P.boolean (nothingRead) (reading (at)) (reads (at.options))
 
-const routesIn = <S, E>(at: Making<S, E>): F.Future<unknown, readonly Route<S, E>[]> =>
+const routesIn = <C extends Context>(at: Making<C>): F.Future<unknown, readonly Route<C>[]> =>
   P.map (routesFrom (at.options)) (readIn (at))
 
 /** Everything the app settled, and the routes it answers with. */
-type Standing<S, E> = Making<S, E> & { readonly routes: readonly Route<S, E>[] }
+type Standing<C extends Context> = Making<C> & { readonly routes: readonly Route<C>[] }
 
 const withRoutes =
-  <S, E>(at: Making<S, E>) => (routes: readonly Route<S, E>[]): Standing<S, E> => ({
+  <C extends Context>(at: Making<C>) => (routes: readonly Route<C>[]): Standing<C> => ({
     ...at,
     routes,
   })
 
-const standing = <S, E>(at: Making<S, E>): F.Future<unknown, Standing<S, E>> =>
+const standing = <C extends Context>(at: Making<C>): F.Future<unknown, Standing<C>> =>
   P.map (withRoutes (at)) (routesIn (at))
 
-const started = <S, E>(options: Options<S, E>): F.Future<unknown, Standing<S, E>> =>
-  P.pipe ([placing<S, E>, P.chain (making<S, E>), P.chain (standing<S, E>)]) (options)
+const started = <C extends Context>(options: Options<C>): F.Future<unknown, Standing<C>> =>
+  P.pipe ([placing<C>, P.chain (making<C>), P.chain (standing<C>)]) (options)
 
 /** Something that may have an answer for a request, and may not. */
 type Serves = (request: Request) => F.Future<unknown, P.Maybe<Reply>>
 
-const drawing = <S, E>(at: Standing<S, E>): Draws<E> =>
+const drawing = <C extends Context>(at: Standing<C>): Draws<C['env']> =>
   drawingOf ({
-    options: at.options as HandlerOptions<S, E> & {
+    options: at.options as HandlerOptions<C> & {
       readonly include?: readonly KitIsland[]
     },
     manifest: at.made.manifest,
@@ -168,17 +168,17 @@ const drawing = <S, E>(at: Standing<S, E>): Draws<E> =>
     routes: at.routes,
   })
 
-const chunksIn = <S, E>(at: Standing<S, E>): StaticOptions => ({
+const chunksIn = <C extends Context>(at: Standing<C>): StaticOptions => ({
   dir: at.outDir,
   base: at.base,
   cache: chunkCache,
   serves: isChunk,
 })
 
-const assetsIn = <S, E>(at: Standing<S, E>): readonly StaticOptions[] =>
+const assetsIn = <C extends Context>(at: Standing<C>): readonly StaticOptions[] =>
   P.toArray (P.fromNullable (at.options.assets))
 
-const dirsIn = <S, E>(at: Standing<S, E>): readonly StaticOptions[] =>
+const dirsIn = <C extends Context>(at: Standing<C>): readonly StaticOptions[] =>
   P.append (chunksIn (at)) (assetsIn (at))
 
 const asSent = (reply: Reply): F.Future<unknown, Reply> => F.resolve (reply)
@@ -200,22 +200,22 @@ const orDrawn =
   (request: Request, from?: Arrival<E>): F.Future<unknown, Reply> =>
     P.chain (sending (rest) (request, from)) (way (request))
 
-const waysIn = <S, E>(at: Standing<S, E>): readonly Serves[] =>
+const waysIn = <C extends Context>(at: Standing<C>): readonly Serves[] =>
   P.map (files) (dirsIn (at))
 
-const answering = <S, E>(at: Standing<S, E>): Draws<E> =>
-  P.foldr (orDrawn<E>) (drawing (at)) (waysIn (at))
+const answering = <C extends Context>(at: Standing<C>): Draws<C['env']> =>
+  P.foldr (orDrawn<C['env']>) (drawing (at)) (waysIn (at))
 
 const asResponse = (
   drawn: F.Future<unknown, Reply>,
 ): F.Future<unknown, Response> => P.map (sendingOut) (drawn)
 
-const responding = <S, E>(
-  at: Standing<S, E>,
-): (request: Request, from?: Arrival<E>) => Promise<Response> => {
+const responding = <C extends Context>(
+  at: Standing<C>,
+): (request: Request, from?: Arrival<C['env']>) => Promise<Response> => {
   const drawn = answering (at)
   const claim = liveClaimFor (at.routes)
-  return (request: Request, from?: Arrival<E>): Promise<Response> =>
+  return (request: Request, from?: Arrival<C['env']>): Promise<Response> =>
     P.maybe_ (
       () => F.promise (asResponse (drawn (request, from))),
     ) ((res: Response) => Promise.resolve (res)) (claim (request))
@@ -231,9 +231,9 @@ const responding = <S, E>(
  * }))
  * ```
  */
-export async function app<S = unknown, E = unknown>(
-  options: Options<S, E>,
-): Promise<(request: Request, from?: Arrival<E>) => Promise<Response>> {
+export async function app<C extends Context = Context>(
+  options: Options<C>,
+): Promise<(request: Request, from?: Arrival<C['env']>) => Promise<Response>> {
   return responding (await F.promise (started (options)))
 }
 
@@ -254,7 +254,7 @@ const logging =
   async (request: Request, from?: Arrival<E>): Promise<Response> =>
     sayAnswer (request) (performance.now ()) (await answers (request, from))
 
-const withReload = <S, E>(config: Config<S, E>): readonly KitIsland[] =>
+const withReload = <C extends Context>(config: Config<C>): readonly KitIsland[] =>
   P.pipe ([
     P.defaultTo<readonly KitIsland[]> ([]),
     P.append<KitIsland> ('reload'),
@@ -270,10 +270,10 @@ const withReload = <S, E>(config: Config<S, E>): readonly KitIsland[] =>
  * await listen (await serve (application))
  * ```
  */
-export async function serve<S = unknown, E = unknown>(
-  config: Config<S, E>,
-): Promise<(request: Request, from?: Arrival<E>) => Promise<Response>> {
-  return await app ({ ...config, build: false } as Options<S, E>)
+export async function serve<C extends Context = Context>(
+  config: Config<C>,
+): Promise<(request: Request, from?: Arrival<C['env']>) => Promise<Response>> {
+  return await app ({ ...config, build: false } as Options<C>)
 }
 
 /**
@@ -285,9 +285,9 @@ export async function serve<S = unknown, E = unknown>(
  * await listen (await dev (application))
  * ```
  */
-export async function dev<S = unknown, E = unknown>(
-  config: Config<S, E>,
-): Promise<(request: Request, from?: Arrival<E>) => Promise<Response>> {
+export async function dev<C extends Context = Context>(
+  config: Config<C>,
+): Promise<(request: Request, from?: Arrival<C['env']>) => Promise<Response>> {
   return logging (
     await app ({
       ...config,
@@ -295,6 +295,6 @@ export async function dev<S = unknown, E = unknown>(
       minify: false,
       prebuilt: false,
       include: withReload (config),
-    } as Options<S, E>),
+    } as Options<C>),
   )
 }

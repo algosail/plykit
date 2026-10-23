@@ -7,7 +7,7 @@ import type { Entry } from '../records/list.ts'
 import type { Loan } from '../records/loans.ts'
 import type { Note } from '../records/notes.ts'
 import type { Reader } from '../records/readers.ts'
-import type { State } from '../state.ts'
+import type { App } from '../state.ts'
 import type { Row } from '../ui/listing.ts'
 import { data, page } from '../../../src/mod.ts'
 import { read } from '../answers.ts'
@@ -71,7 +71,7 @@ const asLine = (n: Note) => ({
   said: n.text,
 })
 
-export const me: Route<State> = page ({
+export const me: Route<App> = page ({
   pattern: '/me',
   load: (ctx) =>
     read (

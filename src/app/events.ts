@@ -183,9 +183,9 @@ export function eventStream(
 }
 
 /** A channel and the route that hands it out. */
-export type Channel<S = unknown, E = unknown> = {
+export type Channel<C extends Context = Context> = {
   /** Put this in the app's routes; it answers with the stream. */
-  readonly route: Route<S, E>
+  readonly route: Route<C>
   /** Say a region is out of date to everyone watching it. */
   readonly stale: (region: string) => void
   /** Say something else — an event of the app's own naming. */
@@ -226,22 +226,22 @@ const caughtUp =
  * @example
  * ```ts
  * // channel :: Options -> Channel s
- * export const updates = channel<State> ({ path: '/updates' })
+ * export const updates = channel<App> ({ path: '/updates' })
  * // in the routes: [...pages, updates.route]
  * // in a handler, after writing: updates.stale (`comments-${slug}`)
  * ```
  */
-export function channel<S = unknown, E = unknown>(
+export function channel<C extends Context = Context>(
   options: ChannelOptions,
-): Channel<S, E> {
+): Channel<C> {
   const path = pathOf (options)
   const [events, announce] = S.bus<ServerEvent> ()
   const since = caughtUp (options) (events)
   return {
-    route: endpoint<S, E> ({
+    route: endpoint<C> ({
       pattern: path,
       on: {
-        GET: (ctx: Context<S, E>) =>
+        GET: (ctx: C) =>
           F.resolve (eventStream (since (ctx.request), options)),
       },
     }),
@@ -331,7 +331,7 @@ const required = (): Reply =>
   Rp.headers ({ upgrade: SOCKET }) (Rp.status (426) (Rp.noContent ()))
 
 const greeted =
-  <S, E>(_ctx: Context<S, E>): F.Future<unknown, Reply> =>
+  <C extends Context>(_ctx: C): F.Future<unknown, Reply> =>
     F.resolve (required ())
 
 /**
@@ -341,8 +341,8 @@ const greeted =
  * handler ({ routes: [...pages, liveRoute ()] })
  * ```
  */
-export const liveRoute = <S = unknown, E = unknown>(): Route<S, E> => ({
-  ...endpoint<S, E> ({
+export const liveRoute = <C extends Context = Context>(): Route<C> => ({
+  ...endpoint<C> ({
     pattern: LIVE_PATH,
     on: { GET: greeted },
   }),
@@ -429,8 +429,8 @@ const saying = (one: ServerEvent): S.Stream<ServerEvent> =>
  * handler ({ routes: [...pages, reloadRoute ()] })
  * ```
  */
-export const reloadRoute = <S = unknown, E = unknown>(): Route<S, E> =>
-  endpoint<S, E> ({
+export const reloadRoute = <C extends Context = Context>(): Route<C> =>
+  endpoint<C> ({
     pattern: RELOAD_PATH,
     on: {
       GET: () =>

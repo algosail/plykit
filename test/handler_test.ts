@@ -4,7 +4,8 @@ import * as H from '@algosail/plydom/h'
 import * as F from '@algosail/plyfuture'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { Handler, Reply, Route } from '../src/mod.ts'
+import type { Context, Handler, Reply, Route } from '../src/mod.ts'
+import type { App } from './fixture/app.ts'
 import { empty } from '../src/app/reply.ts'
 import { discover } from '../src/build/build.ts'
 import {
@@ -177,8 +178,8 @@ const noted: Handler = (event) =>
 const notePath = '/note/one'
 const escaped = '/note/one'
 
-const noteRoutes: readonly Route[] = shell ([
-  page<Record<string, never>> ({
+const noteRoutes: readonly Route<App>[] = shell ([
+  page ({
     pattern: '/note/:slug',
     load: () => F.resolve (data ({})),
     view: (ctx) => H.p ([`note ${ctx.params.slug}`]),
@@ -234,7 +235,7 @@ test ('kit/server — a method the page does not have is a 405', async () => {
 
 test ('kit/server — what a handler threw becomes a 500 and does not escape', async () => {
   const boom = handler ({
-    routes: [page<Record<string, never>> ({
+    routes: [page ({
       pattern: '/boom',
       load: () => F.resolve (data ({})),
       view: () => H.p (['—']),
@@ -252,7 +253,7 @@ test ('kit/server — what a handler threw becomes a 500 and does not escape', a
 
 test ('kit/server — a GET handler on a page answers instead of the view', async () => {
   const both = handler ({
-    routes: [page<Record<string, never>> ({
+    routes: [page ({
       pattern: '/both',
       load: () => F.resolve (data ({})),
       view: () => H.p (['view']),
@@ -414,14 +415,14 @@ test ('kit/server — a view that fell gives a 500 and does not take the backend
   const before = D.getBackend ()
   const app = handler ({
     routes: [
-      page<Record<string, never>> ({
+      page ({
         pattern: '/boom',
         load: () => F.resolve (data ({})),
         view: () => {
           throw new Error ('the view exploded')
         },
       }),
-      page<Record<string, never>> ({
+      page ({
         pattern: '/',
         load: () => F.resolve (data ({})),
         view: () => H.p (['intact']),
@@ -442,7 +443,7 @@ test ('kit/server — a view that fell gives a 500 and does not take the backend
 test ('kit/server — a page that refuses keeps both the headers and the cookies', async () => {
   const app = handler ({
     routes: [
-      page<Record<string, never>> ({
+      page ({
         pattern: '/',
         load: () => F.resolve (data ({})),
         view: () => H.p (['home']),
@@ -487,7 +488,7 @@ test ('kit/server — HEAD of a page goes to its own on.GET', async () => {
   let loaded = 0
   const ask = handler ({
     routes: [
-      page<Record<string, never>> ({
+      page ({
         pattern: '/x',
         load: () => {
           loaded += 1
@@ -520,9 +521,9 @@ test ('kit/server — HEAD of a page goes to its own on.GET', async () => {
 
 test ('kit/server — ahead answers before the state is built', async () => {
   let built = 0
-  const ask = handler<{ who: string }> ({
+  const ask = handler<Context<{ who: string }>> ({
     routes: [
-      page<Record<string, never>> ({
+      page<Context<{ who: string }>> ({
         pattern: '/blog',
         load: () => F.resolve (data ({})),
         view: () => H.p (['blog']),
@@ -568,7 +569,7 @@ test ('kit/reply — reply is a catamorphism, and statusOf goes through it', () 
 
 test ('kit/handlers — POST of a page answers with that page\'s own data', async () => {
   let reads = 0
-  const chrome = layout<{ total: number }> ({
+  const chrome = layout<Context, { total: number }> ({
     load: () => F.resolve (data ({ total: 7 })),
     view: (ctx) =>
       H.div ([H.header ([`total: ${ctx.data.total}`]), H.main ([ctx.slot])]),
@@ -576,7 +577,7 @@ test ('kit/handlers — POST of a page answers with that page\'s own data', asyn
 
   type Shown = { readonly title: string; readonly error: string | null }
 
-  const form = page<Shown> ({
+  const form = page<Context, Shown> ({
     pattern: '/notes',
     load: () => {
       reads += 1

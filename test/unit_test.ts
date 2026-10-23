@@ -277,14 +277,14 @@ test ('kit/html — an empty element does not walk its children, and a nameless 
   assert.deepStrictEqual ([onInside.asked, onHidden.asked], [0, 0])
 })
 
-const home: PageRoute = page<{ readonly n: number }> ({
+const home: PageRoute = page<Context, { readonly n: number }> ({
   pattern: '/',
   load: () => F.resolve (data ({ n: 1 })),
   head: () => ({ title: P.just ('home'), meta: [] }),
   view: (ctx) => H.h1 ([`n=${ctx.data.n}`]),
 })
 
-const boom: PageRoute = page<Record<string, never>> ({
+const boom: PageRoute = page ({
   pattern: '/boom',
   load: () => {
     throw new HttpError (418, 'teapot')
@@ -292,7 +292,7 @@ const boom: PageRoute = page<Record<string, never>> ({
   view: () => H.p (['—']),
 })
 
-const oops: PageRoute = page<Record<string, never>> ({
+const oops: PageRoute = page ({
   pattern: '/oops',
   load: () => {
     throw new TypeError ('chance')
@@ -356,7 +356,7 @@ test ('kit/resolve — an unexpected exception becomes a 500', async () => {
 })
 
 test ('kit/resolve — a redirect from load arrives as a redirect', async () => {
-  const away: PageRoute = page<Record<string, never>> ({
+  const away: PageRoute = page ({
     pattern: '/away',
     load: () => F.resolve (redirect ('/there', 302)),
     view: () => H.p (['—']),
@@ -371,7 +371,7 @@ test ('kit/resolve — a redirect from load arrives as a redirect', async () => 
 })
 
 test ('kit/resolve — a refusal from load carries its own status', async () => {
-  const denied: PageRoute = page<Record<string, never>> ({
+  const denied: PageRoute = page ({
     pattern: '/denied',
     load: (): F.Future<unknown, Loaded<Record<string, never>>> =>
       F.resolve (failed (403) ('not allowed')),
@@ -409,7 +409,7 @@ test ('kit/router/layout — a layout around a list, and nesting as nesting', ()
   const chrome = layout ({
     view: (ctx) => H.section ({ class: 'chrome' }, [ctx.slot]),
   })
-  const plain: PageRoute = page<Record<string, never>> ({
+  const plain: PageRoute = page ({
     pattern: '/x',
     load: () => F.resolve (data ({})),
     view: () => H.p (['x']),
