@@ -43,7 +43,17 @@ type ColorProp =
   | 'stroke'
   | 'textDecorationColor'
 
-type Scaled = SpaceProp | ColorProp | 'fontFamily' | 'animationName'
+type BorderProp =
+  | 'border'
+  | 'borderTop'
+  | 'borderRight'
+  | 'borderBottom'
+  | 'borderLeft'
+  | 'outline'
+
+type ShadowProp = 'boxShadow' | 'textShadow'
+
+type Scaled = SpaceProp | ColorProp | BorderProp | ShadowProp | 'fontFamily' | 'animationName'
 
 type Widen<P> = {
   readonly [K in keyof P]?: P[K] | Arbitrary
@@ -63,6 +73,16 @@ type ColorFields<Keys extends string> = {
   readonly [P in ColorProp]?: Scale<Keys>
 }
 
+type BorderFields<Keys extends string> = {
+  readonly [P in BorderProp]?: Keys | NonNullable<Properties[P]> | Arbitrary
+}
+
+type ShadowFields<Keys extends string> = {
+  readonly [P in ShadowProp]?: Keys | NonNullable<Properties[P]> | Arbitrary
+}
+
+type Css<K extends keyof Properties> = NonNullable<Properties[K]> | Arbitrary
+
 /** One stop of a `@keyframes` rule. A percentage such as `50%` is a stop too. */
 export type Frames = {
   readonly from?: Properties
@@ -70,34 +90,82 @@ export type Frames = {
   readonly [stop: string]: Properties | undefined
 }
 
+/** Typography gathered under one name: `text: 'title'`. */
+type TextFace<T> = {
+  readonly fontFamily?: Scale<KeyOf<Field<T, 'font'>>>
+  readonly fontSize?: Css<'fontSize'>
+  readonly fontWeight?: Css<'fontWeight'>
+  readonly fontStyle?: Css<'fontStyle'>
+  readonly lineHeight?: Css<'lineHeight'>
+  readonly letterSpacing?: Css<'letterSpacing'>
+  readonly textAlign?: Css<'textAlign'>
+  readonly textDecoration?: Css<'textDecoration'>
+  readonly textTransform?: Css<'textTransform'>
+  readonly color?: Scale<KeyOf<Field<T, 'color'>>>
+}
+
+/** A border token. An object splits into width, style, and a color token. */
+type BorderToken<T> =
+  | string
+  | {
+    readonly width?: Css<'borderWidth'>
+    readonly style?: Css<'borderStyle'>
+    readonly color?: Scale<KeyOf<Field<T, 'color'>>>
+  }
+
+/** A shadow token. The object is offset, blur, spread, and a color token. */
+type ShadowToken<T> =
+  | string
+  | {
+    readonly inset?: boolean
+    readonly offsetX: string | number
+    readonly offsetY: string | number
+    readonly blur?: string | number
+    readonly spread?: string | number
+    readonly color?: Scale<KeyOf<Field<T, 'color'>>>
+  }
+
+type Rest<T> = Widen<Omit<Properties, Scaled>>
+  & SpaceFields<KeyOf<Field<T, 'space'>>>
+  & ColorFields<KeyOf<Field<T, 'color'>>>
+  & BorderFields<KeyOf<Field<T, 'border'>>>
+  & ShadowFields<KeyOf<Field<T, 'shadow'>>> & {
+    readonly fontFamily?: Scale<KeyOf<Field<T, 'font'>>>
+    readonly animationName?: KeyOf<Field<T, 'keyframes'>>
+  }
+
+type Face<T> = Rest<T> & {
+  readonly text?: KeyOf<Field<T, 'text'>>
+  readonly layer?: KeyOf<Field<T, 'layer'>>
+}
+
+type Conditions<T> = {
+  readonly hover?: Face<T>
+  readonly focus?: Face<T>
+  readonly active?: Face<T>
+} & {
+  readonly [K in KeyOf<Field<T, 'media'>>]?: Face<T>
+}
+
+/** One `style` argument: properties, and one level of `hover`, `focus`, `active`, or a media key. */
+type Decl<T> = Face<T> & Conditions<T>
+
 /**
- * The table `tokens` reads. Each map is a scale: the key is what a component writes, the value is the CSS.
+ * The table `tokens` reads.
+ * `text` and `layer` are named sets. `border` and `shadow` are composite tokens.
+ * `T` is the table itself, so a set can name a sibling token.
  */
-export type Tokens = {
+export type Tokens<T = object> = {
   readonly color?: { readonly [name: string]: string }
   readonly space?: { readonly [name: string]: string }
   readonly font?: { readonly [name: string]: string }
   readonly media?: { readonly [name: string]: string }
   readonly keyframes?: { readonly [name: string]: Frames }
+  readonly text?: { readonly [name: string]: TextFace<T> }
+  readonly layer?: { readonly [name: string]: Rest<T> }
+  readonly border?: { readonly [name: string]: BorderToken<T> }
+  readonly shadow?: { readonly [name: string]: ShadowToken<T> }
 }
-
-type Rest<T> = Widen<Omit<Properties, Scaled>>
-  & SpaceFields<KeyOf<Field<T, 'space'>>>
-  & ColorFields<KeyOf<Field<T, 'color'>>> & {
-    readonly fontFamily?: Scale<KeyOf<Field<T, 'font'>>>
-    readonly animationName?: KeyOf<Field<T, 'keyframes'>>
-  }
-
-type Conditions<T> = {
-  readonly hover?: Rest<T>
-  readonly focus?: Rest<T>
-  readonly active?: Rest<T>
-} & {
-  readonly [K in KeyOf<Field<T, 'media'>>]?: Rest<T>
-}
-
-/** One `style` argument: properties, and one level of `hover`, `focus`, `active`, or a media key. */
-type Decl<T> = Rest<T> & Conditions<T>
 
 type VariantMap<T> = {
   readonly [axis: string]: { readonly [name: string]: Decl<T> }
@@ -161,6 +229,20 @@ const COLOR: ReadonlySet<string> = new Set<ColorProp> ([
 
 const FIXED: ReadonlySet<string> = new Set (['hover', 'focus', 'active'])
 
+const BORDER: Readonly<Record<string, readonly [string, string, string]>> = {
+  border: ['borderWidth', 'borderStyle', 'borderColor'],
+  borderTop: ['borderTopWidth', 'borderTopStyle', 'borderTopColor'],
+  borderRight: ['borderRightWidth', 'borderRightStyle', 'borderRightColor'],
+  borderBottom: ['borderBottomWidth', 'borderBottomStyle', 'borderBottomColor'],
+  borderLeft: ['borderLeftWidth', 'borderLeftStyle', 'borderLeftColor'],
+  outline: ['outlineWidth', 'outlineStyle', 'outlineColor'],
+}
+
+const SHADOW: ReadonlySet<string> = new Set (['boxShadow', 'textShadow'])
+
+const takesColor = (prop: string): boolean =>
+  COLOR.has (prop) || prop.endsWith ('Color')
+
 const SAFE = /^[A-Za-z0-9_-]+$/
 
 const HOVER = '@media (hover: hover) and (pointer: fine)'
@@ -171,6 +253,10 @@ type Table = {
   readonly font: Readonly<Record<string, string>>
   readonly media: Readonly<Record<string, string>>
   readonly keyframes: Readonly<Record<string, unknown>>
+  readonly text: Readonly<Record<string, unknown>>
+  readonly layer: Readonly<Record<string, unknown>>
+  readonly border: Readonly<Record<string, unknown>>
+  readonly shadow: Readonly<Record<string, unknown>>
 }
 
 type Group = 'color' | 'space' | 'font'
@@ -206,6 +292,13 @@ const stringMap = (value: unknown): Record<string, string> => {
   return out
 }
 
+const recordMap = (value: unknown): Record<string, unknown> => {
+  if (!isRecord (value)) return {}
+  const out: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries (value)) out[key] = item
+  return out
+}
+
 const asTable = (table: object): Table => {
   const raw = table as Record<string, unknown>
   return {
@@ -214,6 +307,10 @@ const asTable = (table: object): Table => {
     font: stringMap (raw.font),
     media: stringMap (raw.media),
     keyframes: isRecord (raw.keyframes) ? raw.keyframes : {},
+    text: recordMap (raw.text),
+    layer: recordMap (raw.layer),
+    border: recordMap (raw.border),
+    shadow: recordMap (raw.shadow),
   }
 }
 
@@ -241,7 +338,7 @@ const interpret = (table: Table) => (prop: string) => (value: unknown): Use | un
   if (typeof value === 'string' && SPACE.has (prop) && Object.hasOwn (table.space, value)) {
     return { tag: 'token', group: 'space', key: value, css: `var(${varName ('space', value)})` }
   }
-  if (typeof value === 'string' && COLOR.has (prop) && Object.hasOwn (table.color, value)) {
+  if (typeof value === 'string' && takesColor (prop) && Object.hasOwn (table.color, value)) {
     return { tag: 'token', group: 'color', key: value, css: `var(${varName ('color', value)})` }
   }
   if (prop === 'fontFamily' && typeof value === 'string' && Object.hasOwn (table.font, value)) {
@@ -305,18 +402,47 @@ const framed = (name: string) => (body: unknown): Atom | undefined => {
   return className === undefined ? undefined : { id: block.id, text, className }
 }
 
-const oneAtom = (
+const bit = (value: unknown): string | undefined => {
+  if (typeof value === 'number') return String (value)
+  if (typeof value !== 'string') return undefined
+  return arbitrary (value) ?? value
+}
+
+const shadowOf = (table: Table) => (
+  token: unknown,
+): { readonly css: string; readonly colors: readonly string[] } | undefined => {
+  if (typeof token === 'string') return { css: token, colors: [] }
+  if (!isRecord (token)) return undefined
+  const x = bit (token.offsetX)
+  const y = bit (token.offsetY)
+  if (x === undefined || y === undefined) return undefined
+  const blur = bit (token.blur)
+  const spread = bit (token.spread)
+  const colors: string[] = []
+  let color: string | undefined
+  if (typeof token.color === 'string') {
+    const raw = arbitrary (token.color)
+    if (raw !== undefined) color = raw
+    else if (Object.hasOwn (table.color, token.color)) {
+      colors.push (token.color)
+      color = `var(${varName ('color', token.color)})`
+    } else color = token.color
+  }
+  const parts: string[] = []
+  if (token.inset === true) parts.push ('inset')
+  parts.push (x, y)
+  if (blur !== undefined || spread !== undefined) parts.push (blur ?? '0')
+  if (spread !== undefined) parts.push (spread)
+  if (color !== undefined) parts.push (color)
+  return { css: parts.join (' '), colors }
+}
+
+const written = (
   table: Table,
   condition: string | undefined,
   prop: string,
-  value: unknown,
+  use: Exclude<Use, { readonly tag: 'frames' }>,
 ): readonly Atom[] => {
-  const use = interpret (table) (prop) (value)
-  if (use === undefined) return []
-  if (use.tag === 'frames') {
-    const atom = framed (use.key) (table.keyframes[use.key])
-    return atom === undefined ? [] : [atom]
-  }
   const suffix = use.tag === 'token' ? suffixOf (use.key) : suffixOf (use.css)
   const stem = stemOf (condition) (prop) (suffix)
   const raw = wrap (table) (condition) (
@@ -331,21 +457,28 @@ const oneAtom = (
     : [atom]
 }
 
-const atomsOf = (table: Table) => (decl: object): readonly Atom[] => {
-  if (!isRecord (decl)) return []
-  const out: Atom[] = []
-  for (const [key, value] of Object.entries (decl)) {
-    if (isCondition (table, key)) {
-      if (!isRecord (value)) continue
-      for (const [prop, inner] of Object.entries (value)) {
-        if (isCondition (table, prop)) continue
-        out.push (...oneAtom (table, key, prop, inner))
-      }
-      continue
-    }
-    out.push (...oneAtom (table, undefined, key, value))
+const oneAtom = (
+  table: Table,
+  condition: string | undefined,
+  prop: string,
+  value: unknown,
+): readonly Atom[] => {
+  if (SHADOW.has (prop) && typeof value === 'string' && Object.hasOwn (table.shadow, value)) {
+    const painted = shadowOf (table) (table.shadow[value])
+    if (painted === undefined) return []
+    const vars = painted.colors.flatMap ((key) => {
+      const color = table.color[key]
+      return color === undefined ? [] : [variable ('color') (key) (color)]
+    })
+    return [...vars, ...written (table, condition, prop, { tag: 'literal', css: painted.css })]
   }
-  return out
+  const use = interpret (table) (prop) (value)
+  if (use === undefined) return []
+  if (use.tag === 'frames') {
+    const atom = framed (use.key) (table.keyframes[use.key])
+    return atom === undefined ? [] : [atom]
+  }
+  return written (table, condition, prop, use)
 }
 
 const shown = (atoms: readonly Atom[]): string =>
@@ -367,19 +500,78 @@ type Slot = {
   readonly value: unknown
 }
 
-const slotsOf = (table: Table) => (decl: object) => (into: Map<string, Slot>): void => {
+const place = (into: Map<string, Slot>) => (condition: string) => (prop: string) => (
+  value: unknown,
+): void => {
+  into.set (`${condition}\0${prop}`, { condition, prop, value })
+}
+
+const applyProp = (table: Table) => (condition: string) => (prop: string) => (
+  value: unknown,
+) => (into: Map<string, Slot>): void => {
+  const put = place (into) (condition)
+  const long = BORDER[prop]
+  if (long !== undefined && typeof value === 'string' && Object.hasOwn (table.border, value)) {
+    const token = table.border[value]
+    if (typeof token === 'string') {
+      put (prop) (token)
+      return
+    }
+    if (isRecord (token)) {
+      const [width, style, color] = long
+      if (token.width !== undefined) put (width) (token.width)
+      if (token.style !== undefined) put (style) (token.style)
+      if (token.color !== undefined) put (color) (token.color)
+      return
+    }
+  }
+  put (prop) (value)
+}
+
+/**
+ * `text` and `layer` expand first, in source order.
+ * A property on the same declaration then overwrites that slot.
+ */
+const applyDecl = (table: Table) => (decl: object) => (condition: string) => (
+  sets: boolean,
+) => (into: Map<string, Slot>): void => {
   if (!isRecord (decl)) return
+  const nested: [string, object][] = []
+  const chosen: [string, string][] = []
+  const props: [string, unknown][] = []
   for (const [key, value] of Object.entries (decl)) {
-    if (isCondition (table, key)) {
-      if (!isRecord (value)) continue
-      for (const [prop, inner] of Object.entries (value)) {
-        if (isCondition (table, prop)) continue
-        into.set (`${key}\0${prop}`, { condition: key, prop, value: inner })
-      }
+    if (sets && condition === '' && isCondition (table, key) && isRecord (value)) {
+      nested.push ([key, value])
       continue
     }
-    into.set (`\0${key}`, { condition: '', prop: key, value })
+    if (isCondition (table, key)) continue
+    if (key === 'text' || key === 'layer') {
+      if (sets && typeof value === 'string') chosen.push ([key, value])
+      continue
+    }
+    props.push ([key, value])
   }
+  for (const [key, name] of chosen) {
+    const body = (key === 'text' ? table.text : table.layer)[name]
+    if (isRecord (body)) applyDecl (table) (body) (condition) (false) (into)
+  }
+  for (const [key, value] of props) applyProp (table) (condition) (key) (value) (into)
+  for (const [key, value] of nested) applyDecl (table) (value) (key) (true) (into)
+}
+
+const slotsOf = (table: Table) => (decl: object) => (into: Map<string, Slot>): void => {
+  applyDecl (table) (decl) ('') (true) (into)
+}
+
+const atomsOf = (table: Table) => (decl: object): readonly Atom[] => {
+  const slots = new Map<string, Slot> ()
+  slotsOf (table) (decl) (slots)
+  const out: Atom[] = []
+  for (const slot of slots.values ()) {
+    const condition = slot.condition === '' ? undefined : slot.condition
+    out.push (...oneAtom (table, condition, slot.prop, slot.value))
+  }
+  return out
 }
 
 type RecipeSpec = {
@@ -475,7 +667,7 @@ const paint = (table: Table) => (decl: object): string => {
  * style ({ padding: '4' }) // => 'padding_4_…'
  * ```
  */
-export function tokens<const T extends Tokens>(table: T): Theme<T> {
+export function tokens<const T extends Tokens<T>>(table: T): Theme<T> {
   const ready = asTable (table)
   const style = (decl: Decl<T>): string => paint (ready) (decl)
   const recipe = <const V extends VariantMap<T>>(

@@ -483,6 +483,74 @@ test ('tokens — a later variant wins, and an unused one is still registered', 
   assert.ok (sheet ().includes ('padding: var(--space-8)'))
 })
 
+test ('tokens — text and layer expand, and a property overrides the set', () => {
+  const { style, recipe } = fresh (() => tokens ({
+    color: { text: '#111', surface: '#fff', accent: '#08f' },
+    space: { 4: '1rem', 8: '2rem' },
+    font: { serif: 'Georgia, serif' },
+    text: {
+      title: { fontFamily: 'serif', fontSize: '1.5rem', lineHeight: '1.2', color: 'text' },
+    },
+    layer: {
+      card: { background: 'surface', padding: '4', borderRadius: '0.5rem' },
+    },
+  }))
+  const shown = style ({ text: 'title', layer: 'card', padding: '8', color: 'accent' })
+  assert.equal (shown.includes ('padding_4_'), false)
+  assert.ok (shown.includes ('padding_8_'))
+  assert.equal (shown.includes ('color_text_'), false)
+  assert.ok (shown.includes ('color_accent_'))
+  assert.ok (sheet ().includes ('font-family: var(--font-serif)'))
+  assert.ok (sheet ().includes ('font-size: 1.5rem'))
+  assert.ok (sheet ().includes ('background: var(--color-surface)'))
+  assert.ok (sheet ().includes ('border-radius: 0.5rem'))
+  const size = shown.split (' ').find ((one) => one.startsWith ('font-size_'))
+  const again = style ({ text: 'title' })
+  assert.ok (size !== undefined && again.includes (size))
+  assert.equal (sheet ().split ('.font-size_').length - 1, 1)
+  const button = recipe ({
+    base: { text: 'title' },
+    variants: { size: { sm: { fontSize: '1rem' } } },
+  })
+  assert.ok (size !== undefined && button ().includes (size))
+  assert.equal (button ({ size: 'sm' }).includes (size ?? ''), false)
+  const hover = style ({ hover: { text: 'title' } })
+  assert.ok (hover.includes ('hover_font-size_'))
+  assert.ok (sheet ().includes ('@media (hover: hover) and (pointer: fine)'))
+})
+
+test ('tokens — a border or a shadow is one named value', () => {
+  const { style } = fresh (() => tokens ({
+    color: { accent: '#08f', surface: '#fff' },
+    border: {
+      line: { width: '1px', style: 'solid', color: 'accent' },
+      hair: '1px dashed #ccc',
+    },
+    shadow: {
+      lift: '0 1px 2px rgb(0 0 0 / 0.08)',
+      pop: { offsetX: '0', offsetY: '8px', blur: '24px', color: 'surface', inset: true },
+    },
+  }))
+  const line = style ({ border: 'line', borderTop: 'line' })
+  assert.ok (line.includes ('border-width_1px_'))
+  assert.ok (line.includes ('border-style_solid_'))
+  assert.ok (line.includes ('border-color_accent_'))
+  assert.ok (line.includes ('border-top-color_accent_'))
+  assert.ok (sheet ().includes ('border-color: var(--color-accent)'))
+  assert.ok (sheet ().includes ('--color-accent: #08f'))
+  const over = style ({ border: 'line', borderColor: 'surface' })
+  assert.ok (over.includes ('border-color_surface_'))
+  assert.equal (over.includes ('border-color_accent_'), false)
+  assert.ok (over.includes ('border-width_1px_'))
+  style ({ border: 'hair' })
+  assert.ok (sheet ().includes ('border: 1px dashed #ccc'))
+  style ({ boxShadow: 'lift' })
+  assert.ok (sheet ().includes ('box-shadow: 0 1px 2px rgb(0 0 0 / 0.08)'))
+  style ({ boxShadow: 'pop' })
+  assert.ok (sheet ().includes ('box-shadow: inset 0 8px 24px var(--color-surface)'))
+  assert.ok (collectStyles ('<div></div>').includes ('--color-surface'))
+})
+
 test ('tokens — the type refuses a property or a token that is not one', () => {
   const { style, recipe } = theme ()
   const card: string = style ({
@@ -526,4 +594,35 @@ test ('tokens — the type refuses a property or a token that is not one', () =>
 
   // @ts-expect-error nope is not a tone
   button ({ tone: 'nope' })
+
+  const rich = tokens ({
+    color: { text: '#111', accent: '#08f', surface: '#fff' },
+    font: { serif: 'Georgia, serif' },
+    text: { title: { fontFamily: 'serif', fontSize: '1.5rem', color: 'text' } },
+    layer: { card: { background: 'surface', border: 'line' } },
+    border: { line: { width: '1px', style: 'solid', color: 'accent' } },
+    shadow: { lift: { offsetX: '0', offsetY: '1px', blur: '2px', color: 'text' } },
+  })
+  const composed: string = rich.style ({
+    text: 'title',
+    layer: 'card',
+    border: 'line',
+    boxShadow: 'lift',
+  })
+  assert.equal (typeof composed, 'string')
+
+  // @ts-expect-error nope is not a text style
+  rich.style ({ text: 'nope' })
+
+  // @ts-expect-error nope is not a layer
+  rich.style ({ layer: 'nope' })
+
+  // @ts-expect-error nope is not a color token
+  tokens ({ color: { accent: '#08f' }, border: { line: { color: 'nope' } } })
+
+  // @ts-expect-error nope is not a font token
+  tokens ({ font: { serif: 'Georgia, serif' }, text: { title: { fontFamily: 'nope' } } })
+
+  // @ts-expect-error colour is not a layer property
+  tokens ({ layer: { card: { colour: 'red' } } })
 })

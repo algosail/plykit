@@ -4,6 +4,7 @@ import * as P from '@algosail/ply'
 export type Literal =
   | string
   | number
+  | boolean
   | { readonly [key: string]: Literal }
 
 const skipSpace = (source: string) => (at: number): number => {
@@ -204,9 +205,10 @@ const readNumber = (source: string) => (at: number): Read => {
 const readKeyword = (source: string) => (at: number): Read => {
   const found = IDENT.exec (source.slice (at))
   if (found === null) return miss
-  return found[0] === 'true' || found[0] === 'false' || found[0] === 'null'
-    ? drop (at + found[0].length)
-    : miss
+  if (found[0] === 'true') return keep (at + 4, true)
+  if (found[0] === 'false') return keep (at + 5, false)
+  if (found[0] === 'null') return drop (at + 4)
+  return miss
 }
 
 const readValue = (source: string) => (at: number): Read => {
@@ -265,6 +267,7 @@ const readObject = (source: string) => (at: number): Read => {
  * The static value at `at`, cooked the way JavaScript cooks it.
  * An identifier, a hole, or a computed key is a miss.
  * An unquoted number key is kept as its string, so `{ 4: '1rem' }` is `{ '4': '1rem' }`.
+ * `true` and `false` are kept.
  * @example
  * ```ts
  * readLiteral ('{ padding: "1rem" }', 0)

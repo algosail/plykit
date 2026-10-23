@@ -630,6 +630,37 @@ const button = recipe({
 })
 ```
 
+`text` names a set of type properties. `layer` names a set for the box. A
+property on the call replaces the same one from the set. `border` and `shadow`
+name a whole border or shadow. A border object is width, style, and a color
+token.
+
+```ts
+const { style: panel } = tokens({
+  color: { surface: '#fffdf8', accent: '#7a4b1e' },
+  space: { 4: '1rem' },
+  text: {
+    title: { fontSize: '1.5rem', lineHeight: '1.2' },
+  },
+  layer: {
+    card: { background: 'surface', border: 'line', borderRadius: '0.5rem' },
+  },
+  border: {
+    line: { width: '1px', style: 'solid', color: 'accent' },
+  },
+  shadow: {
+    lift: '0 1px 2px rgb(0 0 0 / 0.08)',
+  },
+})
+
+const panelClass = panel({
+  text: 'title',
+  layer: 'card',
+  padding: '4',
+  boxShadow: 'lift',
+})
+```
+
 A value outside a scale is written in brackets: `width: '[100%]'`. `hover`,
 `focus`, `active`, and the keys of `media` are the only conditions, one level
 deep. `animationName` takes a key of `keyframes`. The class goes on the element

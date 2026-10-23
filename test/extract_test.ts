@@ -159,6 +159,31 @@ test ('kit/extract — a static recipe pick is the string the call returns', () 
   resetStyles ()
 })
 
+test ('kit/extract — a static text, layer, and border is the string the call returns', () => {
+  resetStyles ()
+  const { style } = tokens ({
+    color: { surface: '#fff', accent: '#08f' },
+    text: { title: { fontSize: '1.5rem' } },
+    layer: { card: { background: 'surface' } },
+    border: { line: { width: '1px', style: 'solid', color: 'accent' } },
+    shadow: { pop: { offsetX: '0', offsetY: '8px', color: 'accent', inset: true } },
+  })
+  const card = style ({ text: 'title', layer: 'card', border: 'line', boxShadow: 'pop' })
+  const source = [
+    'const { style } = tokens({',
+    '  color: { surface: \'#fff\', accent: \'#08f\' },',
+    '  text: { title: { fontSize: \'1.5rem\' } },',
+    '  layer: { card: { background: \'surface\' } },',
+    '  border: { line: { width: \'1px\', style: \'solid\', color: \'accent\' } },',
+    '  shadow: { pop: { offsetX: \'0\', offsetY: \'8px\', color: \'accent\', inset: true } },',
+    '})',
+    'const card = style({ text: \'title\', layer: \'card\', border: \'line\', boxShadow: \'pop\' })',
+  ].join ('\n')
+  const out = replaceAtoms (source, new Set (styleIds ()), new Map ())
+  assert.ok (said (out).includes (`const card = ${JSON.stringify (card)}`))
+  resetStyles ()
+})
+
 test ('kit/extract — relative imports become absolute', () => {
   const source = [
     "import { css } from '../kit/mod.ts'",
