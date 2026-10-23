@@ -14,7 +14,7 @@ type Claim = (name: string) => boolean
 
 /** Where the files are, and what to say about keeping them. */
 export type StaticOptions = {
-  /** The directory, as a URL: `new URL ('./static/', import.meta.url)`. */
+  /** The directory, as a URL: `new URL ('./static/', import.meta.url)`. Set it from Node. A Worker bundle has no usable `import.meta.url`. */
   readonly dir: URL | string
   /** The prefix these are served under. */
   readonly base?: string

@@ -1,6 +1,6 @@
 {
   "name": "@algosail/plykit",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -50,6 +50,7 @@
     "@algosail/plydom": "^0.1.1",
     "@algosail/plyfuture": "^0.1.1",
     "@algosail/plystream": "^0.1.2",
+    "csstype": "^3.2.3",
     "esbuild": "^0.25.10"
   },
   "devDependencies": {

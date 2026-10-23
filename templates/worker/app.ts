@@ -9,7 +9,6 @@ const home = page ({
 
 const application: Config = {
   routes: [home],
-  assets: { dir: new URL ('./static/', import.meta.url) },
 }
 
 export default application

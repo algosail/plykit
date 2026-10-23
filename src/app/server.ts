@@ -10,6 +10,7 @@ import type {
   Arrival,
   Chrome,
   Context,
+  DocumentHead,
   ErrorView,
   Failed,
   Head,
@@ -60,8 +61,8 @@ export type Options<S = unknown, E = unknown> = Prepare<S> & {
   readonly through?: readonly Middleware<S, E>[]
   /** Answers that need nothing but the request: each is handed one and says a reply or says nothing. */
   readonly ahead?: readonly Ahead[]
-  /** What the app adds to every page's head, given the head that page asked for. */
-  readonly head?: (head: Head) => Head
+  /** The document head. A page's `head` fills `title` and adds its `meta` and `link` after these. */
+  readonly head?: DocumentHead
   /** Told about markup that will not do what it looks like it does: a construct a parser rewrites, an island that was placed but never built, an action aimed at a region with nothing on the page to intercept it. */
   readonly onHazard?: (hazards: readonly Html.Hazard[], url: URL) => void
   /** Module scripts every document carries, whatever its markup — for a chunk that starts itself and has no marker to be found by. */
@@ -309,6 +310,22 @@ const aiming = <S, E>(one: Asking<S, E>) => (state: S): Aiming<S, E> => ({
   aimed: Resolve.aim (one.app.table) (state) (one.request, one.from),
 })
 
+const kept: (page: P.Maybe<string>) => P.Maybe<string> = P.I
+
+const tagsOf = <A>(tags: readonly A[] | undefined): readonly A[] =>
+  P.defaultTo<readonly A[]> ([]) (tags)
+
+/** The page title fills the application's title. The page's tags follow. */
+const dressOf =
+  (root: DocumentHead | undefined) => (page: Head): Head =>
+    root === undefined
+      ? page
+      : {
+          title: (root.title ?? kept) (page.title),
+          meta: P.concat (tagsOf (root.meta)) (tagsOf (page.meta)),
+          link: P.concat (tagsOf (root.link)) (tagsOf (page.link)),
+        }
+
 const servingOf = <S, E>(options: Options<S, E>): Serving<S, E> => ({
   table: Rt.table (options.routes),
   langOf: asAsked<Context<S, E>, string> (
@@ -318,7 +335,7 @@ const servingOf = <S, E>(options: Options<S, E>): Serving<S, E> => ({
   styles: P.defaultTo (collectStyles) (options.styles),
   scripts: islandScripts (P.defaultTo<Manifest> ({}) (options.chunks)),
   drawError: P.defaultTo<ErrorView<S, E>> (plainly) (options.error),
-  dress: P.defaultTo (P.I<Head>) (options.head),
+  dress: dressOf (options.head),
   state: P.defaultTo (noState<S, E>) (declaredIn (options)),
   inert: inertMarkup (P.defaultTo<Manifest> ({}) (options.chunks)),
   told: P.defaultTo (nothingTold) (options.onHazard),

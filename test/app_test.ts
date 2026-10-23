@@ -107,6 +107,56 @@ test ('kit/server — the head sees both the captures and the state', async () =
   assert.deepStrictEqual (seen, ['one /head/[slug] nobody'])
 })
 
+test ('kit/server — the application holds the head and the page adds to it', async () => {
+  const home = page ({
+    pattern: '/',
+    head: () => ({
+      title: P.just ('Desk'),
+      meta: [{ name: 'description', content: 'one shelf' }],
+      link: [{ rel: 'icon', href: '/icon.svg' }],
+    }),
+    view: () => H.p (['desk']),
+  })
+  const bare = page ({
+    pattern: '/bare',
+    view: () => H.p (['bare']),
+  })
+  const ask = handler ({
+    routes: [home, bare],
+    head: {
+      title: (named) =>
+        P.maybe_ (() => P.just ('Room')) (
+          (name: string) => P.just (`${name} · Room`),
+        ) (named),
+      meta: [{ name: 'theme-color', content: '#111' }],
+      link: [{ rel: 'stylesheet', href: '/static/styles.css' }],
+    },
+  })
+
+  const html = await (await ask (new Request ('http://kit.test/'))).text ()
+  assert.ok ((html).includes ('<title>Desk · Room</title>'))
+  assert.ok ((html).includes ('<link rel="stylesheet" href="/static/styles.css">'))
+  assert.ok ((html).includes ('<link rel="icon" href="/icon.svg">'))
+  assert.deepStrictEqual (
+    html.indexOf ('/static/styles.css') < html.indexOf ('/icon.svg'),
+    true,
+  )
+  assert.ok ((html).includes ('<meta name="theme-color" content="#111">'))
+  assert.ok ((html).includes ('<meta name="description" content="one shelf">'))
+  assert.deepStrictEqual (
+    html.indexOf ('theme-color') < html.indexOf ('description'),
+    true,
+  )
+
+  const empty = await (await ask (new Request ('http://kit.test/bare'))).text ()
+  assert.ok ((empty).includes ('<title>Room</title>'))
+  assert.ok ((empty).includes ('href="/static/styles.css"'))
+
+  const missing = await (await ask (new Request ('http://kit.test/nope'))).text ()
+  assert.ok ((missing).includes ('<title>404 · Room</title>'))
+  assert.ok ((missing).includes ('href="/static/styles.css"'))
+})
+
 test ('kit/server — without its own error view kit draws a bare one', async () => {
   const res = await bare (new Request ('http://kit.test/nope'))
   const html = await res.text ()
@@ -203,12 +253,19 @@ test ('kit/app — a page links the styles and does not carry them', () =>
       error,
       state,
       outDir,
+      head: {
+        link: [{ rel: 'stylesheet', href: '/static/styles.css' }],
+      },
     })
 
     const res = await serve (new Request ('http://kit.test/about'))
     const html = await res.text ()
 
     assert.ok ((html).includes ('<link rel="stylesheet" href="/_kit/styles-'))
+    assert.deepStrictEqual (
+      html.indexOf ('/_kit/styles-') < html.indexOf ('/static/styles.css'),
+      true,
+    )
     assert.deepStrictEqual (html.includes ('<style'), false)
 
     const ids = /data-kit-styles="([^"]*)"/.exec (html)?.[1] ?? ''

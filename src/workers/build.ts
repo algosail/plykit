@@ -43,7 +43,10 @@ export const developing = (
  * @example
  * ```ts
  * import application from './app.ts'
- * await workerBuild (application)
+ * await workerBuild ({
+ *   ...application,
+ *   assets: { dir: new URL ('./static/', import.meta.url) },
+ * })
  * ```
  */
 export async function workerBuild(

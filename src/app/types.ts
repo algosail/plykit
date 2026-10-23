@@ -170,12 +170,34 @@ export type Head = {
   readonly link?: readonly Readonly<P.StrMap<string>>[]
 }
 
+/**
+ * The document head an application holds. A page fills `title` and adds tags after these.
+ * @example
+ * ```ts
+ * // title :: Maybe String -> Maybe String
+ * const head: DocumentHead = {
+ *   title: (page) => P.maybe_ (() => P.just ('Room')) (
+ *     (name: string) => P.just (`${name} · Room`),
+ *   ) (page),
+ *   link: [{ rel: 'stylesheet', href: '/static/styles.css' }],
+ * }
+ * ```
+ */
+export type DocumentHead = {
+  /** Where the page title sits. Omitted, the page title is the document title. */
+  readonly title?: (page: P.Maybe<string>) => P.Maybe<string>
+  /** `<meta>` tags on every page. A page's own follow these. */
+  readonly meta?: readonly Readonly<P.StrMap<string>>[]
+  /** `<link>` tags on every page. A page's own follow these. */
+  readonly link?: readonly Readonly<P.StrMap<string>>[]
+}
+
 /** What a route renders, given what its load produced. */
 export type PageView<D extends Json, S = unknown, E = unknown> = (
   ctx: Context<S, E> & { readonly data: D },
 ) => D.View
 
-/** What a page puts in the document head, given the same context its view gets. */
+/** What a page adds to the document head, given the same context its view gets. Its title fills the application's title. Its tags follow the application's. With no application head, this is the document head. */
 export type PageHead<D extends Json, S = unknown, E = unknown> = (
   ctx: Context<S, E> & { readonly data: D },
 ) => Head

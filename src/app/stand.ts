@@ -4,7 +4,7 @@ import type { KitIsland, Manifest, Sheet } from '../build/build.ts'
 import type { Hazard } from '../document/html.ts'
 import type { Prebuilt } from './data.ts'
 import type { Options as HandlerOptions } from './server.ts'
-import type { Arrival, Head, Reply, Route, Routes } from './types.ts'
+import type { Arrival, DocumentHead, Reply, Route, Routes } from './types.ts'
 import { collectBeyond } from '../document/css.ts'
 import { prebuilt } from './data.ts'
 import { liveRoute, reloadRoute } from './events.ts'
@@ -139,25 +139,19 @@ const linkTo = (sheet: Sheet) => (href: string): Link => ({
   'data-kit-styles': P.joinWith (' ') (sheet.styleIds),
 })
 
-const linking =
-  <S, E>(at: Standing<S, E>) => (href: string) => (own: Head): Head => ({
-    ...own,
-    link: P.pipe ([
-      P.defaultTo<readonly Link[]> ([]),
-      P.prepend (linkTo (at.sheet) (href)),
-    ]) (own.link),
+const tagsOf = (link: DocumentHead['link']): readonly Link[] =>
+  P.defaultTo<readonly Link[]> ([]) (link)
+
+/** Kit's own sheet leads the application's links. Pages still add theirs after. */
+const withSheet =
+  <S, E>(at: Standing<S, E>) => (href: string): DocumentHead => ({
+    title: at.options.head?.title,
+    meta: at.options.head?.meta,
+    link: P.prepend (linkTo (at.sheet) (href)) (tagsOf (at.options.head?.link)),
   })
 
-const asIs: () => (head: Head) => Head = P.K (P.I<Head>)
-
-const dressing = <S, E>(at: Standing<S, E>): (head: Head) => Head =>
-  P.maybe_ (asIs) (linking (at)) (sheetIn (at))
-
-const ownDressing = <S, E>(at: Standing<S, E>): (head: Head) => Head =>
-  P.defaultTo (P.I<Head>) (at.options.head)
-
-const headIn = <S, E>(at: Standing<S, E>): (head: Head) => Head =>
-  P.pipe ([ownDressing (at), dressing (at)])
+const headed = <S, E>(at: Standing<S, E>): DocumentHead | undefined =>
+  P.maybe_ (() => at.options.head) (withSheet (at)) (sheetIn (at))
 
 const asOwn = <S, E>(at: Standing<S, E>) => (): Styling | undefined =>
   at.options.styles
@@ -197,7 +191,7 @@ export function drawingOf<S, E = unknown>(at: Standing<S, E>): Draws<E> {
     ...at.options,
     routes: at.routes,
     chunks: at.manifest,
-    head: headIn (at),
+    head: headed (at),
     styles: stylesIn (at),
     onHazard: P.defaultTo (warn) (at.options.onHazard),
     always: alwaysIn (at),

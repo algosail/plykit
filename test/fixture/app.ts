@@ -1,5 +1,5 @@
 import * as P from '@algosail/ply'
-import type { Config, Head, Item, Routes } from '../../src/mod.ts'
+import type { Config, DocumentHead, Item, Routes } from '../../src/mod.ts'
 import type { Note } from './records/notes.ts'
 import type { State } from './state.ts'
 import { feed, robots, sitemap } from '../../src/mod.ts'
@@ -48,21 +48,13 @@ export const routes: Routes<State> = [
   robots<State> ({ sitemap: `${ORIGIN}/sitemap.xml` }),
 ]
 
-const ROOM_LINKS: readonly Readonly<P.StrMap<string>>[] = [
-  { rel: 'icon', href: '/static/lamp.svg' },
-  { rel: 'alternate', type: 'application/rss+xml', href: '/feed.xml' },
-]
-
-/** What every page's head gets besides what the page itself asked for. */
-const ownLinks = (own: Head): readonly Readonly<P.StrMap<string>>[] =>
-  P.fromMaybe<readonly Readonly<P.StrMap<string>>[]> ([]) (
-    P.fromNullable (own.link),
-  )
-
-export const head = (own: Head): Head => ({
-  ...own,
-  link: P.concat (ROOM_LINKS) (ownLinks (own)),
-})
+/** Links every page carries. A page's own tags follow these. */
+export const head: DocumentHead = {
+  link: [
+    { rel: 'icon', href: '/static/lamp.svg' },
+    { rel: 'alternate', type: 'application/rss+xml', href: '/feed.xml' },
+  ],
+}
 
 export { error } from './layouts/error.ts'
 export { state } from './state.ts'

@@ -5,6 +5,7 @@ export type {
   Arrival,
   Chrome,
   Context,
+  DocumentHead,
   Endpoint,
   ErrorView,
   Failed,
@@ -188,7 +189,7 @@ export {
 export type { ServerNode } from './document/node.ts'
 
 export { collectBeyond, collectStyles, css, resetStyles, styleIds, styleSheet } from './document/css.ts'
-export type { Classes } from './document/css.ts'
+export type { Classes, Style } from './document/css.ts'
 
 export {
   hydrateIslands,

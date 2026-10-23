@@ -2,7 +2,7 @@ import * as P from '@algosail/ply'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { absolute, replaceBlocks } from '../src/build/extract.ts'
-import { compile } from '../src/document/css.ts'
+import { compile, css, resetStyles, styleIds } from '../src/document/css.ts'
 
 const block = (raw: string) => compile (raw)
 
@@ -71,6 +71,65 @@ test ('kit/extract — an escaped apostrophe inside a block', () => {
   const one = block (raw)
   const out = replaceBlocks (`const s = css\`${raw}\``, new Set ([one.id]))
   assert.deepStrictEqual (said (out), `const s = ${JSON.stringify (one.classes)}`)
+})
+
+test ('kit/extract — a static object is the same block the call registers', () => {
+  resetStyles ()
+  const theme = css ({
+    card: {
+      padding: '1rem',
+      selectors: { '&:hover': { background: '#eee' } },
+    },
+    'menu, account': { display: 'flex' },
+  })
+  const source = [
+    'export const theme = css({',
+    '  // the card',
+    '  card: {',
+    "    padding: '1rem',",
+    "    selectors: { '&:hover': { background: '#eee' } },",
+    '  },',
+    "  'menu, account': { display: 'flex' },",
+    '})',
+  ].join ('\n')
+
+  const out = replaceBlocks (source, new Set (styleIds ()))
+  assert.deepStrictEqual (said (out), `export const theme = ${JSON.stringify (theme)}`)
+  resetStyles ()
+})
+
+test ('kit/extract — a brace or an escape inside a string stays part of the value', () => {
+  resetStyles ()
+  const theme = css ({ card: { content: 'a { b }\n' } })
+  const source = "const theme = css({ card: { content: 'a { b }\\n' } })"
+  const out = replaceBlocks (source, new Set (styleIds ()))
+  assert.deepStrictEqual (said (out), `const theme = ${JSON.stringify (theme)}`)
+  resetStyles ()
+})
+
+test ('kit/extract — an object that names a value is left for runtime', () => {
+  const source = 'const s = css({ card: { color: accent } })'
+  assert.deepStrictEqual (
+    replaceBlocks (source, new Set (['anything'])),
+    P.nothing (),
+  )
+})
+
+test ('kit/extract — a template and an object in one file', () => {
+  resetStyles ()
+  const fromTemplate = css`.a { color: red }`
+  const fromObject = css ({ b: { color: 'blue' } })
+  const source = [
+    'const a = css`.a { color: red }`',
+    "const b = css({ b: { color: 'blue' } })",
+  ].join ('\n')
+
+  const out = said (replaceBlocks (source, new Set (styleIds ())))
+  assert.ok (out.includes (JSON.stringify (fromTemplate)))
+  assert.ok (out.includes (JSON.stringify (fromObject)))
+  assert.equal (out.includes ('css`'), false)
+  assert.equal (out.includes ('css('), false)
+  resetStyles ()
 })
 
 test ('kit/extract — relative imports become absolute', () => {

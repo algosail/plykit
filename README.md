@@ -97,7 +97,7 @@ it is needed.
 | `ahead` | replies that one `Request` is enough for. The first to say a reply wins |
 | `lang` | the document language, a string or a function of the context |
 | `dir` | `ltr`, `rtl`, `auto`, or a function that may return `undefined` |
-| `head` | what to add to the `<head>` of every page |
+| `head` | the document head. `title` places the page title. `meta` and `link` are on every page |
 | `error` | failure markup. The status and the message by default |
 | `onHazard` | `(hazards, url) => void`. Markup the parser will rewrite, an island with no chunk, an action into an empty region |
 | `styles` | `(markup) => string`, ready `<style>` tags |
@@ -109,6 +109,16 @@ it is needed.
 | `build` | build islands when a host starts. `workerBuild` always builds |
 | `minify` | compress chunks. `wrangler dev` leaves them readable |
 | `prebuilt` | answer a static page from `kit-data.json`. The worker reads `record.json`, and `wrangler dev` leaves that data empty |
+
+`head` belongs to the application. A page fills `title` and adds its own `meta` and `link` after the application's. With no `title` function, the page title is the document title. A page that sets no title leaves whatever `title` returns for `P.nothing()`. With no application `head`, the page's head is the document head.
+
+```ts
+head: {
+  title: (page) =>
+    P.maybe_(() => P.just('Room'))((name) => P.just(`${name} · Room`))(page),
+  link: [{ rel: 'stylesheet', href: '/static/styles.css' }],
+}
+```
 
 `assets`:
 
@@ -126,10 +136,21 @@ Where chunks are put if the directory is not named:
 
 The browser still asks for those files at `/_kit/` (or `base`). `assets` stays the application's own files, at `/static/` unless `assets.base` says otherwise.
 
-`assets` is set on the application. `workerBuild` copies `assets.dir` and does not look for a `static/` directory on its own. `assets.dir` is a build setting. The worker does not read it: it serves `assets.base`, or `/static/` when `base` is omitted. A relative string for `dir` is resolved from the filesystem root, the same way as `stage`'s `to`. A URL next to the module stays next to the module:
+`assets` is set on the application when the host that reads `assets.dir` is Node. `workerBuild` copies `assets.dir` and does not look for a `static/` directory on its own. `assets.dir` is a build setting. The worker does not read it: it serves the prefix recorded in `record.json`, which is `assets.base`, or `/static/` when `base` is omitted. A relative string for `dir` is resolved from the filesystem root, the same way as `stage`'s `to`. A URL next to the module stays next to the module.
+
+On the Node host, `import.meta.url` is a file URL, so the directory can sit on the application:
 
 ```ts
 assets: { dir: new URL('./static/', import.meta.url) }
+```
+
+A Worker bundles `app.ts`. `import.meta.url` inside that bundle is not a valid URL, and `new URL` throws while the isolate starts. Put the directory on the object passed to `workerBuild`, in `build.ts`, which Node runs:
+
+```ts
+await workerBuild({
+  ...application,
+  assets: { dir: new URL('./static/', import.meta.url) },
+})
 ```
 
 A relative `outDir` is resolved from the current directory. The `to` field of
@@ -196,7 +217,7 @@ A page title is a `P.Maybe<string>` from `@algosail/ply`. An empty title is
 | `pattern` | the pattern |
 | `view` | `(ctx) => View`. The context already has `data` |
 | `load` | `(ctx) => Future<Loaded>`. No function means data `{}` and status 200 |
-| `head` | `(ctx) => { title, meta?, link? }` |
+| `head` | `(ctx) => { title, meta?, link? }`, added to the application's head |
 | `on` | handlers for methods that do not draw the page |
 | `static` | the page can be written as a file |
 | `paths` | `() => Future<Params[]>`, addresses for a pattern with captures |
@@ -553,19 +574,47 @@ In the config `include` you name kit's islands, not your own:
 
 ## Styles
 
-`css` is a template string. A class in the template comes back from the result
-already renamed, and that name goes on `class`.
+`css` takes an object of rules. A key that names a class comes back already
+renamed, and that name goes on `class`. Put the object below the function
+that reads it. Property names are the CSS names in camel case, so the editor
+completes them, and a formatter formats the object. No CSS-in-JS plugin.
 
 ```ts
 import { css } from '@algosail/plykit'
 import * as H from '@algosail/plydom/h'
 
+export const card = (title: string) =>
+  H.article({ class: theme.card }, [
+    H.h2({ class: theme.title }, [title]),
+  ])
+
+const theme = css({
+  card: {
+    padding: '1rem',
+    selectors: {
+      '&:hover': { background: '#eee' },
+      '& > .title': { margin: 0 },
+    },
+    media: {
+      '(min-width: 40rem)': { padding: '2rem' },
+    },
+  },
+  title: { margin: 0 },
+})
+```
+
+A key of several names, `'menu, account'`, is one rule and two class names.
+A key that is not a class name is a selector as written: `':root'`, `'&body'`,
+`'.header a'`. The leading `&` is dropped. A word on its own, `body`, is the
+class `.body`.
+
+A template string still works. The editor will not offer CSS completions in
+it unless a plugin does.
+
+```ts
 const s = css`
   .card { padding: 1rem }
-  .card:hover { background: #eee }
 `
-
-H.div({ class: s.card }, ['…'])
 ```
 
 Until the islands are built, styles travel in the `<style>` of the page that
@@ -757,7 +806,10 @@ there. The worker entry is your `worker.ts`. `workerBuild` does not write it.
 import { workerBuild } from '@algosail/plykit/build'
 import application from './app.ts'
 
-await workerBuild(application)
+await workerBuild({
+  ...application,
+  assets: { dir: new URL('./static/', import.meta.url) },
+})
 ```
 
 Copy `templates/worker/wrangler.jsonc` into the application and edit it there.
@@ -915,7 +967,10 @@ export { KitLive } from '@algosail/plykit/workers'
 import { workerBuild } from '@algosail/plykit/build'
 import application from './app.ts'
 
-await workerBuild(application)
+await workerBuild({
+  ...application,
+  assets: { dir: new URL('./static/', import.meta.url) },
+})
 ```
 
 `watch_dir` is the list you keep. `dist`, `.kit`, `node_modules`,

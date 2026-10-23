@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import type { Style } from '../src/mod.ts'
 import {
   collectBeyond,
   collectStyles,
@@ -386,4 +387,115 @@ test ('kit/collectStyles — a block arrives by its own class, and someone else\
     [true, false, true],
     'worn, unfound, nameless',
   )
+})
+
+test ('css — an object renames its classes and can sit below the reader', () => {
+  const read = (): string => shown.card
+  const shown = fresh (() =>
+    css ({
+      card: {
+        padding: '1rem',
+        lineHeight: 1.6,
+        selectors: {
+          '&:hover': { background: '#eee' },
+          '& > .icon': { fill: 'red' },
+          '& a': { color: '#7a4b1e' },
+        },
+        media: {
+          '(min-width: 40rem)': { padding: '2rem' },
+        },
+      },
+      icon: {},
+      'menu, account': {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.9rem',
+      },
+    }),
+  )
+  assert.ok (read ().includes ('card_'))
+  assert.deepStrictEqual (
+    Object.keys (shown).sort (),
+    ['account', 'card', 'icon', 'menu'],
+  )
+  const text = sheet ()
+  assert.ok (text.includes (`.${shown.card}:hover`))
+  assert.ok (text.includes (`.${shown.card} > .${shown.icon}`))
+  assert.ok (text.includes (`.${shown.card} a`))
+  assert.ok (text.includes ('@media (min-width: 40rem)'))
+  assert.ok (text.includes ('padding: 2rem'))
+  assert.ok (text.includes ('line-height: 1.6'))
+  assert.ok (text.includes (`.${shown.menu}, .${shown.account}`))
+  assert.ok (text.includes ('-webkit-line-clamp') === false)
+})
+
+test ('css — a selector key is written as itself, and a bare word is a class', () => {
+  fresh (() => {
+    css ({
+      ':root': { '--brand': '#08f' },
+      '&body': { margin: 0 },
+    })
+    css ({ body: { color: 'red' } })
+  })
+  const text = sheet ()
+  assert.ok (text.includes (':root'))
+  assert.ok (text.includes ('--brand: #08f'))
+  assert.ok (text.includes ('body {'))
+  assert.ok (text.includes ('margin: 0'))
+  assert.ok (text.includes ('.body'))
+  const worn = collectStyles ('<div></div>')
+  assert.ok (worn.includes ('--brand: #08f'))
+  assert.ok (worn.includes ('margin: 0'))
+  assert.equal (worn.includes ('.body'), false)
+})
+
+test ('css — Webkit and ms names gain the leading dash', () => {
+  fresh (() => {
+    css ({
+      clip: {
+        WebkitLineClamp: 2,
+        msFlexDirection: 'column',
+      },
+    })
+  })
+  const text = sheet ()
+  assert.ok (text.includes ('-webkit-line-clamp: 2'))
+  assert.ok (text.includes ('-ms-flex-direction: column'))
+})
+
+test ('css — the type names the classes and refuses a property that is not one', () => {
+  const theme = css ({
+    card: {
+      padding: '1rem',
+      opacity: 0.4,
+      margin: 0,
+      '--brand': '#08f',
+    },
+    'menu, account': { display: 'flex' },
+  })
+  const named: string = theme.menu
+  assert.equal (typeof theme.account, 'string')
+  assert.equal (typeof named, 'string')
+
+  const rule = (style: Style): Style => style
+  rule ({
+    selectors: {
+      '&:hover': {
+        // @ts-expect-error colour is not a CSS property
+        colour: 'blue',
+      },
+    },
+    media: {
+      '(min-width: 40rem)': {
+        // @ts-expect-error colour is not a CSS property inside a query
+        colour: 'green',
+      },
+    },
+  })
+
+  // @ts-expect-error colour is not a CSS property
+  css ({ card: { colour: 'red' } })
+
+  // @ts-expect-error a class the sheet does not name
+  theme.nope
 })

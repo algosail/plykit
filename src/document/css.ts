@@ -1,4 +1,8 @@
 import * as P from '@algosail/ply'
+import type { ClassesOf, Style } from './style.ts'
+import { declaredNames, emit } from './style.ts'
+
+export type { Style } from './style.ts'
 
 /** The hash a block is known by, and what a class in it ends with. */
 export type BlockId = string
@@ -191,23 +195,62 @@ const registerOnce = (block: Compiled): void =>
     }),
   ) (block)
 
+const withNames =
+  (block: Compiled) => (names: readonly string[]): Classes =>
+    P.reduce ((classes: Classes, name: string): Classes =>
+      P.has (name) (classes)
+        ? classes
+        : P.insert (name) (`${name}_${block.id}`) (classes),
+    ) (block.classes) (names)
+
 /**
- * Scoped CSS.
+ * The block an object sheet compiles to, and the class map `css` hands back.
+ * Names that the sheet lists but the text never uses are still in the map.
  * @example
  * ```ts
- * // css :: TemplateStringsArray -> ...(String | Number) -> Classes
- * const s = css`.card { padding: 1rem } .card:hover { background: #eee }`
- * el ('div', { class: s.card }, ['…'])
+ * compiledSheet ({ card: { padding: '1rem' } }).classes.card // => 'card_…'
+ * ```
+ */
+export const compiledSheet = (
+  sheet: object,
+): { readonly block: Compiled; readonly classes: Classes } => {
+  const block = compile (emit (sheet))
+  return { block, classes: withNames (block) (declaredNames (sheet)) }
+}
+
+const isTemplate = (value: object): value is TemplateStringsArray =>
+  Array.isArray (value)
+
+/**
+ * Scoped CSS, from a template string or from an object of rules.
+ * The object may sit below the function that reads its class names.
+ * @example
+ * ```ts
+ * // css :: Sheet -> ClassesOf
+ * const view = () => el ('div', { class: theme.card }, ['…'])
+ * const theme = css ({ card: { padding: '1rem' } })
  * // => <div class="card_1f4k2j">…</div>
  * ```
  */
+export function css<const T>(
+  sheet: { readonly [K in keyof T]: Style },
+): ClassesOf<T>
 export function css(
   strings: TemplateStringsArray,
   ...values: readonly (string | number)[]
-): Classes {
-  const block = compile (String.raw ({ raw: strings }, ...values))
-  registerOnce (block)
-  return block.classes
+): Classes
+export function css<const T>(
+  stringsOrSheet: TemplateStringsArray | { readonly [K in keyof T]: Style },
+  ...values: readonly (string | number)[]
+): Classes | ClassesOf<T> {
+  if (isTemplate (stringsOrSheet)) {
+    const block = compile (String.raw ({ raw: stringsOrSheet }, ...values))
+    registerOnce (block)
+    return block.classes
+  }
+  const settled = compiledSheet (stringsOrSheet)
+  registerOnce (settled.block)
+  return settled.classes
 }
 
 const forStyleTag = P.replaceAll ('</', '<\\/')
