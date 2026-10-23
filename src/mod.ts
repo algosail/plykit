@@ -187,7 +187,7 @@ export {
 } from './node.ts'
 export type { ServerNode } from './node.ts'
 
-export { collectStyles, css, resetStyles, styleIds, styleSheet } from './css.ts'
+export { collectBeyond, collectStyles, css, resetStyles, styleIds, styleSheet } from './css.ts'
 export type { Classes } from './css.ts'
 
 export {

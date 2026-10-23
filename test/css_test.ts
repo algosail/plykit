@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  collectBeyond,
   collectStyles,
   css,
   resetStyles,
@@ -178,6 +179,29 @@ test ('css — a repeated call does not add the block twice', () => {
     collectStyles (`<p class="${a.a}"></p>`).split ('<style').length - 1,
     1,
   )
+})
+
+test ('collectBeyond — a known block stays out, a new one rides along', () => {
+  let kept: Record<string, string> = {}
+  let freshBlock: Record<string, string> = {}
+  fresh (() => {
+    kept = css`
+      .kept {
+        color: red;
+      }
+    `
+    freshBlock = css`
+      .fresh {
+        color: blue;
+      }
+    `
+  })
+  const markup = `<p class="${kept.kept} ${freshBlock.fresh}"></p>`
+  const known = styleIds ().filter ((id) => kept.kept.endsWith (`_${id}`))
+  const tags = collectBeyond (known) (markup)
+  assert.ok ((tags).includes ('color: blue'))
+  assert.deepStrictEqual (tags.includes ('color: red'), false)
+  assert.deepStrictEqual (collectBeyond (styleIds ()) (markup), '')
 })
 
 test ('collectStyles — the tags carry their own id', () => {

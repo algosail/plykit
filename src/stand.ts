@@ -5,6 +5,7 @@ import type { Prebuilt } from './data.ts'
 import type { Hazard } from './html.ts'
 import type { Options as HandlerOptions } from './server.ts'
 import type { Arrival, Head, Reply, Route, Routes } from './types.ts'
+import { collectBeyond } from './css.ts'
 import { prebuilt } from './data.ts'
 import { liveRoute, reloadRoute } from './events.ts'
 import { flat } from './router.ts'
@@ -158,15 +159,13 @@ const ownDressing = <S, E>(at: Standing<S, E>): (head: Head) => Head =>
 const headIn = <S, E>(at: Standing<S, E>): (head: Head) => Head =>
   P.pipe ([ownDressing (at), dressing (at)])
 
-const noStyles: Styling = P.K ('')
-
-const drawnElsewhere: (href: string) => Styling = P.K (noStyles)
-
 const asOwn = <S, E>(at: Standing<S, E>) => (): Styling | undefined =>
   at.options.styles
 
 const stylesIn = <S, E>(at: Standing<S, E>): Styling | undefined =>
-  P.maybe_ (asOwn (at)) (drawnElsewhere) (sheetIn (at))
+  P.maybe_ (asOwn (at)) (
+    () => collectBeyond (at.sheet.styleIds),
+  ) (sheetIn (at))
 
 const reloadScript = <S, E>(at: Standing<S, E>): readonly string[] =>
   P.boolean<readonly string[]> ([]) (

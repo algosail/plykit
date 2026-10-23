@@ -229,6 +229,17 @@ const classesWorn = (markup: string): string => {
 const isWorn = (worn: string) => (one: P.Pair<BlockId, Registered>): boolean =>
   !one.snd.named || P.includes (`_${one.fst}`) (worn)
 
+const tagsFor =
+  (markup: string) =>
+  (keep: (one: P.Pair<BlockId, Registered>) => boolean): string => {
+    const worn = isWorn (classesWorn (markup))
+    return P.foldMap (P.Concat) (asStyleTag) (
+      P.filter ((one: P.Pair<BlockId, Registered>) => worn (one) && keep (one)) (
+        remembered (),
+      ),
+    )
+  }
+
 /**
  * The blocks a page uses, as `<style>` tags for its `<head>`.
  * @example
@@ -239,9 +250,22 @@ const isWorn = (worn: string) => (one: P.Pair<BlockId, Registered>): boolean =>
  * ```
  */
 export const collectStyles = (markup: string): string =>
-  P.foldMap (P.Concat) (asStyleTag) (
-    P.filter (isWorn (classesWorn (markup))) (remembered ()),
-  )
+  tagsFor (markup) (() => true)
+
+/**
+ * Blocks the markup wears that `known` does not already name.
+ * A dev reload compiles a changed block before the next build rewrites the file, and the page carries that block until the file catches up.
+ * @example
+ * ```ts
+ * // collectBeyond :: Array String -> String -> String
+ * collectBeyond (styleIds ()) (body) // => ''
+ * ```
+ */
+export const collectBeyond =
+  (known: readonly string[]) => (markup: string): string =>
+    tagsFor (markup) ((one: P.Pair<BlockId, Registered>) =>
+      !P.elem (one.fst) (known),
+    )
 
 /**
  * Every registered block as plain CSS, for writing to a file.

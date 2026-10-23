@@ -570,7 +570,10 @@ H.div({ class: s.card }, ['…'])
 Until the islands are built, styles travel in the `<style>` of the page that
 used them. The build takes them into one file under the chunk prefix.
 `collectStyles(markup)` gathers the tags for those blocks whose classes are
-in the markup. `styleSheet()` returns all of the registered CSS as a string.
+in the markup. A Worker keeps linking that file. A block compiled since the
+file was written also goes out in the page, so a dev reload shows the change
+before the next build. `styleSheet()` returns all of the registered CSS as a
+string.
 `styleIds()` is the block identifiers. `resetStyles()` clears the registry
 between tests.
 

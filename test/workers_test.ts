@@ -10,7 +10,7 @@ import type {
 } from '../src/workers.ts'
 import { mkdir, readText, stat, writeText } from '../src/disk.ts'
 import { stale } from '../src/events.ts'
-import { endpoint, page, text } from '../src/mod.ts'
+import { css, endpoint, page, resetStyles, styleIds, text } from '../src/mod.ts'
 import { publish, wranglerConfig } from '../src/publish.ts'
 import { KitLive, worker } from '../src/workers.ts'
 import { inDir } from './temp.ts'
@@ -105,6 +105,53 @@ test ('kit/workers — the page is drawn, and the client address is taken from t
   )
   assert.deepStrictEqual (res.status, 200)
   assert.ok ((await res.text ()).includes ('203.0.113.5'))
+})
+
+test ('kit/workers — a block missing from the linked sheet rides in the page', async () => {
+  resetStyles ()
+  const painted = css`
+    .banner {
+      color: #123456;
+    }
+  `
+  const id = styleIds ()[0] ?? ''
+  const app = worker ({
+    routes: [
+      page ({
+        pattern: '/',
+        view: () => H.p ({ class: painted.banner }, ['hi']),
+      }),
+    ],
+  }, {
+    record: {
+      manifest: {},
+      styles: '/_kit/styles-old.css',
+      styleIds: ['not-the-banner'],
+    },
+  })
+
+  const html = await (await app.fetch (new Request ('http://x/'), {}, quiet)).text ()
+  assert.ok ((html).includes ('rel="stylesheet" href="/_kit/styles-old.css"'))
+  assert.ok ((html).includes (painted.banner))
+  assert.ok ((html).includes ('#123456'))
+
+  const caughtUp = worker ({
+    routes: [
+      page ({
+        pattern: '/',
+        view: () => H.p ({ class: painted.banner }, ['hi']),
+      }),
+    ],
+  }, {
+    record: {
+      manifest: {},
+      styles: '/_kit/styles-old.css',
+      styleIds: [id],
+    },
+  })
+  const quietHtml = await (await caughtUp.fetch (new Request ('http://x/'), {}, quiet)).text ()
+  assert.ok ((quietHtml).includes (painted.banner))
+  assert.deepStrictEqual (quietHtml.includes ('#123456'), false)
 })
 
 test ('kit/workers — a file under the prefix comes from ASSETS, a page does not', async () => {
