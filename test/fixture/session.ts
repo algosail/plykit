@@ -27,7 +27,7 @@ const overHttp: (c: Cookie) => Cookie = P.onlyIf (OVER_HTTP) (insecure)
 
 const carrying = (id: string): F.Future<unknown, Cookie> =>
   P.chain ((k: Signed) =>
-    P.map (P.pipe ([during (WEEK), overHttp])) (signedCookie (k) (KEY) (id)),
+    P.map (P.pipe (during (WEEK), overHttp)) (signedCookie (k) (KEY) (id)),
   ) (keys)
 
 const opened = (request: Request): F.Future<unknown, P.Maybe<string>> =>

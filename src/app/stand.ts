@@ -58,10 +58,10 @@ const asRoute = <C extends Context>(comes: Comes<C>): Route<C> => comes.route ()
 const routePattern = <C extends Context>(route: Route<C>): string => route.pattern
 
 const asksFor = <C extends Context>(options: Asked<C>) => (island: KitIsland): boolean =>
-  P.pipe ([
+  P.pipe (
     P.defaultTo<readonly KitIsland[]> ([]),
     P.elem (island),
-  ]) (options.include)
+  ) (options.include)
 
 const patternsIn = <C extends Context>(routes: readonly Route<C>[]): readonly string[] =>
   P.map (routePattern<C>) (routes)
@@ -70,10 +70,10 @@ const claimed = (patterns: readonly string[]) => (pattern: string): boolean =>
   P.elem (pattern) (patterns)
 
 const wanted = <C extends Context>(options: Asked<C>): (comes: Comes<C>) => boolean =>
-  P.pipe ([islandOf<C>, asksFor (options)])
+  P.pipe (islandOf<C>, asksFor (options))
 
 const taken = <C extends Context>(routes: readonly Route<C>[]): (comes: Comes<C>) => boolean =>
-  P.pipe ([patternOf<C>, claimed (patternsIn (routes))])
+  P.pipe (patternOf<C>, claimed (patternsIn (routes)))
 
 const coming =
   <C extends Context>(options: Asked<C>) =>

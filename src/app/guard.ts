@@ -91,11 +91,11 @@ export function csrfProps(request: Request): Readonly<Record<string, string>> {
 }
 
 const asTokenCookie = (strict: Strictness): (token: string) => Cookie =>
-  P.pipe ([
+  P.pipe (
     Ck.cookie (CSRF_COOKIE),
     Ck.readable,
     P.onlyIf (!strict.secure) (Ck.insecure),
-  ])
+  )
 
 /** A request, the token it will use, and whether that token is brand new. */
 type Guarded<C extends Context> = {
@@ -232,10 +232,10 @@ export function guard<C extends Context = Context>(
 ): Middleware<C> {
   const guarded = guarding (strictnessOf (options))
   return (next: Answering<C>): Answering<C> =>
-    P.pipe ([
+    P.pipe (
       guarded<C>,
       P.ifElse<Guarded<C>> (isSafe) (passing (next)) (
         checking (next),
       ),
-    ])
+    )
 }

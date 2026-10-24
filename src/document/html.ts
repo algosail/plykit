@@ -144,19 +144,19 @@ const asStyle = (said: string): string => ` style="${escapeAttribute (said)}"`
 
 const styleOf = (node: ServerNode): Readonly<P.StrMap<string>> => node.style
 
-const declarationsOf: (style: Readonly<P.StrMap<string>>) => string = P.pipe ([
+const declarationsOf: (style: Readonly<P.StrMap<string>>) => string = P.pipe (
   P.sortedPairs,
   P.filter (isDeclaration),
   P.map (asDeclaration),
   P.joinWith (' '),
-])
+)
 
-const styleAttribute: (node: ServerNode) => string = P.pipe ([
+const styleAttribute: (node: ServerNode) => string = P.pipe (
   styleOf,
   declarationsOf,
   P.fromPredicate (isWritten),
   P.maybe_ (P.K ('')) (asStyle),
-])
+)
 
 /**
  * One attribute as it is written inside a tag, leading space and all.
@@ -174,11 +174,11 @@ const attributesIn = (
   node: ServerNode,
 ): readonly (readonly [string, string])[] => P.fromIterable (node.attributes)
 
-const attributesOf: (node: ServerNode) => string = P.pipe ([
+const attributesOf: (node: ServerNode) => string = P.pipe (
   attributesIn,
   P.map ((one: readonly [string, string]) => P.fromTuple (one)),
   P.foldMap (P.Concat) (asAttribute),
-])
+)
 
 const openTag = (node: ServerNode): string =>
   `<${node.localName}${attributesOf (node)}${styleAttribute (node)}>`

@@ -14,16 +14,16 @@ export type Signed = {
 
 const bytes = new TextEncoder ()
 
-const asUrlSafe: (said: string) => string = P.pipe ([
+const asUrlSafe: (said: string) => string = P.pipe (
   P.replaceAll ('+', '-'),
   P.replaceAll ('/', '_'),
   P.replaceAll ('=', ''),
-])
+)
 
-const asBase64: (said: string) => string = P.pipe ([
+const asBase64: (said: string) => string = P.pipe (
   P.replaceAll ('-', '+'),
   P.replaceAll ('_', '/'),
-])
+)
 
 const paddingOf = (said: string): string =>
   '='.repeat ((4 - said.length % 4) % 4)
@@ -172,15 +172,15 @@ export function open(
   keys: Signed,
 ): (name: string) => (request: Request) => F.Future<unknown, P.Maybe<string>> {
   return (name: string) =>
-    P.pipe ([
+    P.pipe (
       carried (name),
       P.maybe_ (() => F.resolve (P.nothing<string> ())) (keys.open),
-    ])
+    )
 }
 
 /** A signed cookie under the session defaults, ready to go on an answer. */
 export function sealed(
   keys: Signed,
 ): (name: string) => (value: string) => F.Future<unknown, Cookie> {
-  return (name: string) => P.pipe ([makeCookie (name), seal (keys)])
+  return (name: string) => P.pipe (makeCookie (name), seal (keys))
 }

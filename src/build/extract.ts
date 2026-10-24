@@ -65,7 +65,7 @@ type Spot =
   | { readonly tag: 'leave'; readonly at: number; readonly end: number }
 
 const literalNear = (source: string): (at: number) => P.Maybe<Literal> =>
-  P.pipe ([tickFrom (source), P.chain (literalAt (source))])
+  P.pipe (tickFrom (source), P.chain (literalAt (source)))
 
 const asLiteralSpot = (at: number) => (literal: Literal): Spot => ({
   tag: 'literal',
@@ -105,12 +105,12 @@ const classesOf = (block: Compiled): Classes => block.classes
 const knownIn = (
   known: ReadonlySet<string>,
 ): (literal: Literal) => P.Maybe<Classes> =>
-  P.pipe ([
+  P.pipe (
     P.fromPredicate (isPlain),
     P.map (compiled),
     P.filter (isKnown (known)),
     P.map (classesOf),
-  ])
+  )
 
 /** A piece of the answer, and whether anything in it was replaced. */
 type Rewrite = {
@@ -167,10 +167,10 @@ const wasChanged = (one: Rewrite): boolean => one.changed
 
 const textOf = (one: Rewrite): string => one.text
 
-const ifChanged: (done: Rewrite) => P.Maybe<string> = P.pipe ([
+const ifChanged: (done: Rewrite) => P.Maybe<string> = P.pipe (
   P.fromPredicate (wasChanged),
   P.map (textOf),
-])
+)
 
 /**
  * The same source with every known block replaced by its class names, or nothing where there was nothing to replace.

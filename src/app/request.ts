@@ -14,11 +14,11 @@ const fieldIn = (one: Submitted): P.Maybe<P.Pair<string, string>> =>
     P.fromPredicate (P.isString) (one[1]),
   )
 
-const fieldsOf: (form: FormData) => Readonly<P.StrMap<string>> = P.pipe ([
+const fieldsOf: (form: FormData) => Readonly<P.StrMap<string>> = P.pipe (
   submittedIn,
   P.filterMap (fieldIn),
   P.fromPairs<string>,
-])
+)
 
 function groupedOf(
   pairs: readonly P.Pair<string, string>[],
@@ -28,12 +28,11 @@ function groupedOf(
   return out
 }
 
-const fieldsAllOf: (form: FormData) => Readonly<P.StrMap<readonly string[]>> = P
-  .pipe ([
-    submittedIn,
-    P.filterMap (fieldIn),
-    groupedOf,
-  ])
+const fieldsAllOf: (form: FormData) => Readonly<P.StrMap<readonly string[]>> = P.pipe (
+  submittedIn,
+  P.filterMap (fieldIn),
+  groupedOf,
+)
 
 /**
  * The fields of a submitted form, keyed by name.
@@ -94,10 +93,10 @@ export function text(request: Request): F.Future<unknown, string> {
 const searchIn = (url: URL): readonly (readonly [string, string])[] =>
   P.fromIterable (url.searchParams)
 
-const searchPairs: (url: URL) => readonly P.Pair<string, string>[] = P.pipe ([
+const searchPairs: (url: URL) => readonly P.Pair<string, string>[] = P.pipe (
   searchIn,
   P.map ((one: readonly [string, string]) => P.fromTuple (one)),
-])
+)
 
 /**
  * What the query string carried.
@@ -108,10 +107,10 @@ const searchPairs: (url: URL) => readonly P.Pair<string, string>[] = P.pipe ([
  * // => { tag: 'fp', page: '2' }
  * ```
  */
-export const query: (url: URL) => Readonly<P.StrMap<string>> = P.pipe ([
+export const query: (url: URL) => Readonly<P.StrMap<string>> = P.pipe (
   searchPairs,
   P.fromPairs<string>,
-])
+)
 
 /**
  * The same query, but every value under its name.
@@ -122,11 +121,10 @@ export const query: (url: URL) => Readonly<P.StrMap<string>> = P.pipe ([
  * // => { tag: ['fp', 'deno'], page: ['2'] }
  * ```
  */
-export const queryAll: (url: URL) => Readonly<P.StrMap<readonly string[]>> = P
-  .pipe ([
-    searchPairs,
-    groupedOf,
-  ])
+export const queryAll: (url: URL) => Readonly<P.StrMap<readonly string[]>> = P.pipe (
+  searchPairs,
+  groupedOf,
+)
 
 /**
  * One header, or nothing if it was not sent.
@@ -172,7 +170,7 @@ const fieldOf =
  * ```
  */
 export function jsonField(name: string): (body: Json) => P.Maybe<Json> {
-  return P.pipe ([P.fromPredicate (isFields), P.chain (fieldOf (name))])
+  return P.pipe (P.fromPredicate (isFields), P.chain (fieldOf (name)))
 }
 
 /**

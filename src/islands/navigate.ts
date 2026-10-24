@@ -67,7 +67,7 @@ const aimedAway: (anchor: Element) => boolean = P.anyPass ([
 
 const asUrl = (href: string): URL => new URL (href, location.href)
 
-const urlOf: (href: string) => P.Maybe<URL> = P.pipe ([asUrl, P.just])
+const urlOf: (href: string) => P.Maybe<URL> = P.pipe (asUrl, P.just)
 
 const isHere = (url: URL): boolean => url.origin === location.origin
 
@@ -90,12 +90,12 @@ const handled: (anchor: Element) => P.Maybe<Element> = P.fromPredicate (
 
 const linkable: (url: URL) => P.Maybe<URL> = P.fromPredicate (ours)
 
-const linkIn: (anchor: Element) => P.Maybe<URL> = P.pipe ([
+const linkIn: (anchor: Element) => P.Maybe<URL> = P.pipe (
   handled,
   P.chain (attrOf ('href')),
   P.chain (urlOf),
   P.chain (linkable),
-])
+)
 
 const wasHandled = (event: MouseEvent): boolean => event.defaultPrevented
 const isSecondary = (event: MouseEvent): boolean => event.button !== 0
@@ -117,11 +117,11 @@ const plainly: (event: MouseEvent) => P.Maybe<MouseEvent> = P.fromPredicate (
   P.predicateNot (P.anyPass (elsewhere.map (P.predicate))),
 )
 
-const linkTarget: (event: MouseEvent) => P.Maybe<URL> = P.pipe ([
+const linkTarget: (event: MouseEvent) => P.Maybe<URL> = P.pipe (
   plainly,
   P.chain (anchorOf),
   P.chain (linkIn),
-])
+)
 
 const KIT_STYLE = 'style[data-kit]'
 const LINKED = 'link[rel]'
@@ -546,10 +546,10 @@ const show = (one: Going): Promise<void> =>
 
 const isPartName: (id: string) => boolean = P.test (PART_NAME)
 
-const aimedAt: (el: Element) => P.Maybe<string> = P.pipe ([
+const aimedAt: (el: Element) => P.Maybe<string> = P.pipe (
   attrOf (INTO_ATTR),
   P.chain (P.fromPredicate (isPartName)),
-])
+)
 
 const partOf = (el: P.Maybe<Element>): P.Maybe<string> => P.chain (aimedAt) (el)
 
@@ -841,15 +841,15 @@ const asSending = (on: Sent): Sending => {
 
 const goesHere = (one: Sending): boolean => isHere (one.url)
 
-const sendingOf: (on: Sent) => P.Maybe<Sending> = P.pipe ([
+const sendingOf: (on: Sent) => P.Maybe<Sending> = P.pipe (
   asSending,
   P.fromPredicate (goesHere),
-])
+)
 
-const sendingIn: (event: Event) => P.Maybe<Sending> = P.pipe ([
+const sendingIn: (event: Event) => P.Maybe<Sending> = P.pipe (
   sentIn,
   P.chain (sendingOf),
-])
+)
 
 const isPosting = (one: Sending): boolean => one.method === 'post'
 

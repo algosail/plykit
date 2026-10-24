@@ -175,10 +175,10 @@ export const parsePattern = (pattern: string): Pattern =>
  * hasCaptures ('/about') // => false
  * ```
  */
-export const hasCaptures: (pattern: string) => boolean = P.pipe ([
+export const hasCaptures: (pattern: string) => boolean = P.pipe (
   parsePattern,
   P.any (isCapture),
-])
+)
 
 type Caught = readonly P.Pair<string, string>[]
 
@@ -189,10 +189,10 @@ const nothingToCatch: P.Maybe<Caught> = P.just<Caught> ([])
 const decoded = (part: string): string =>
   P.fromMaybe (part) (P.maybeEncase (decodeURIComponent) (part))
 
-const partsOf: (path: string) => readonly string[] = P.pipe ([
+const partsOf: (path: string) => readonly string[] = P.pipe (
   segmentsOf,
   P.map (decoded),
-])
+)
 
 const caughtOne = (name: string, part: string): P.Maybe<Caught> =>
   P.just<Caught> ([P.pair (name, part)])
@@ -294,7 +294,7 @@ export function match(pattern: Pattern): (path: string) => P.Maybe<Params> {
       reading.tail (P.fromMaybe<readonly string[]> ([]) (P.drop (upTo) (parts))),
     )
 
-  return P.pipe ([partsOf, against, P.map (paramsOf)])
+  return P.pipe (partsOf, against, P.map (paramsOf))
 }
 
 /** How tightly a segment pins a path down. */

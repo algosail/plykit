@@ -23,7 +23,7 @@ const tag = (name: string) => (value: string): string =>
 const tagged =
   <A>(name: string, shown: (a: A) => string) =>
   (value: A | undefined): P.Maybe<string> =>
-    P.map (P.pipe ([shown, tag (name)])) (P.fromNullable (value))
+    P.map (P.pipe (shown, tag (name))) (P.fromNullable (value))
 
 const someTags = (all: readonly P.Maybe<string>[]): string =>
   asText (P.justs (all))
@@ -209,7 +209,7 @@ export function sitemap<C extends Context = Context>(options: SitemapOptions<C>)
     static: options.static !== false,
     on: {
       GET: (): F.Future<unknown, Reply> =>
-        P.map (P.pipe ([asUrlset (options.origin), xml])) (placesFor (options)),
+        P.map (P.pipe (asUrlset (options.origin), xml)) (placesFor (options)),
     },
   })
 }
@@ -304,7 +304,7 @@ export function feed<C extends Context = Context>(options: FeedOptions): Route<C
     static: options.static !== false,
     on: {
       GET: (): F.Future<unknown, Reply> =>
-        P.map (P.pipe ([asChannel (options), xml])) (options.items ()),
+        P.map (P.pipe (asChannel (options), xml)) (options.items ()),
     },
   })
 }

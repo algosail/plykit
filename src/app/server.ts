@@ -510,7 +510,7 @@ const drawing = <C extends Context>(one: Aiming<C>): F.Future<unknown, Reply> =>
 
 const drawingFor = <C extends Context>(
   one: Asking<C>,
-): (state: C['state']) => F.Future<unknown, Reply> => P.pipe ([aiming (one), drawing])
+): (state: C['state']) => F.Future<unknown, Reply> => P.pipe (aiming (one), drawing)
 
 const asUnprepared =
   <C extends Context>(one: Asking<C>) => (err: unknown): F.Future<unknown, Reply> =>
@@ -554,10 +554,10 @@ const asBroken = (err: unknown): Response =>
     headers: { 'content-type': 'application/json' },
   })
 
-export const sendingOut: (reply: Reply) => Response = P.pipe ([
+export const sendingOut: (reply: Reply) => Response = P.pipe (
   P.encase (Rp.toResponse),
   P.either (asBroken) (P.I<Response>),
-])
+)
 
 /**
  * Builds a request handler for an app: `answer`, started, with its reply turned into a Response.

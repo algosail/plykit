@@ -153,7 +153,7 @@ const standing = <C extends Context>(at: Making<C>): F.Future<unknown, Standing<
   P.map (withRoutes (at)) (routesIn (at))
 
 const started = <C extends Context>(options: Options<C>): F.Future<unknown, Standing<C>> =>
-  P.pipe ([placing<C>, P.chain (making<C>), P.chain (standing<C>)]) (options)
+  P.pipe (placing<C>, P.chain (making<C>), P.chain (standing<C>)) (options)
 
 /** Something that may have an answer for a request, and may not. */
 type Serves = (request: Request) => F.Future<unknown, P.Maybe<Reply>>
@@ -255,11 +255,11 @@ const logging =
     sayAnswer (request) (performance.now ()) (await answers (request, from))
 
 const withReload = <C extends Context>(config: Config<C>): readonly KitIsland[] =>
-  P.pipe ([
+  P.pipe (
     P.defaultTo<readonly KitIsland[]> ([]),
     P.append<KitIsland> ('reload'),
     P.nub<KitIsland>,
-  ]) (config.include)
+  ) (config.include)
 
 /**
  * The app as it runs where a build has already written the chunks: no bundler and no writing.

@@ -79,21 +79,21 @@ const declaring =
     known.set (name, isle)
   }
 
-const escaped: (said: string) => string = P.pipe ([
+const escaped: (said: string) => string = P.pipe (
   P.replaceAll ('<', '\\u003c'),
   P.replaceAll ('>', '\\u003e'),
-])
+)
 
 const asJson = (props: Json): string => JSON.stringify (props)
 
-const encodeProps: (props: Json) => string = P.pipe ([asJson, escaped])
+const encodeProps: (props: Json) => string = P.pipe (asJson, escaped)
 
 const parsed = (said: string): Json => JSON.parse (said) as Json
 
-const decodeProps: (text: string) => P.Maybe<Json> = P.pipe ([
+const decodeProps: (text: string) => P.Maybe<Json> = P.pipe (
   P.encase (parsed),
   P.eitherToMaybe<unknown, Json>,
-])
+)
 
 /**
  * Names a component and puts a marker around it.
@@ -155,10 +155,11 @@ export function island<
  * // => ['counter']
  * ```
  */
-export const used: (markup: string) => readonly string[] = P.pipe ([
-  P.pipe ([P.firstCaptures (IN_MARKUP), P.justs]),
+export const used: (markup: string) => readonly string[] = P.pipe (
+  P.firstCaptures (IN_MARKUP),
+  (found: readonly P.Maybe<string>[]) => P.justs (found),
   P.nub,
-])
+)
 
 const COMMENT_NODE = 8
 
@@ -235,7 +236,7 @@ const asList = (one: P.Maybe<Slot>): readonly Slot[] => P.toArray (one)
 const closing = (
   close: Marker,
 ): (start: P.Maybe<Started>) => readonly Slot[] =>
-  P.pipe ([P.chain (slotFor (close)), asList])
+  P.pipe (P.chain (slotFor (close)), asList)
 
 /** What a marker in the markup is. */
 type Mark =
@@ -369,7 +370,7 @@ const keeping = (rest: readonly Alive[]): void => {
  * ```ts
  * // resetIslands :: () -> void
  * resetIslands ()
- * pipe ([tap (() => resetIslands ()), swapMarkup]) (root)
+ * pipe (tap (() => resetIslands ()), swapMarkup) (root)
  * ```
  */
 export function resetIslands(): void {

@@ -139,11 +139,11 @@ function makeNode(
         P.chain ((at: number) => P.index (at + 1) (parent.childNodes)) (
           placeOf (parent.childNodes, self),
         )
-      return P.pipe ([
+      return P.pipe (
         P.fromNullable<ServerNode>,
         P.chain (after),
         P.fromMaybe<ServerNode | null> (null),
-      ]) (self.parentNode)
+      ) (self.parentNode)
     },
 
     get textContent() {

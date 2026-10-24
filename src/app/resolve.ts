@@ -170,7 +170,7 @@ const attempted = <A>(
 const outcomeOf = <A, C extends Context>(
   onOk: (a: A) => F.Future<unknown, Outcome<C>>,
 ): (produce: () => F.Future<unknown, A>) => F.Future<unknown, Outcome<C>> =>
-  P.pipe ([attempted, P.chain (P.either (asRefused<C>) (onOk))])
+  P.pipe (attempted, P.chain (P.either (asRefused<C>) (onOk)))
 
 const notAllowed = <C extends Context>(at: Asked<C>): F.Future<unknown, Outcome<C>> =>
   F.resolve (replied<C> (
@@ -186,14 +186,14 @@ const drawing = <C extends Context>(at: Page<C>): F.Future<unknown, Outcome<C>> 
 
 const unhandled = <C extends Context>(at: Asked<C>): F.Future<unknown, Outcome<C>> =>
   P.cases<Route<C>, F.Future<unknown, Outcome<C>>> ({
-    page: P.pipe ([
+    page: P.pipe (
       asPage (at.ctx),
       P.boolean<(one: Page<C>) => F.Future<unknown, Outcome<C>>> (notAllowed) (
         drawing,
       ) (
         P.elem (at.ctx.request.method) (RENDERED),
       ),
-    ]),
+    ),
     endpoint: () => notAllowed (at),
   }) (at.route)
 
@@ -220,7 +220,7 @@ const fromSaid = <C extends Context>(
     failure: asReplied,
     data: (said) =>
       P.cases<Route<C>, F.Future<unknown, Outcome<C>>> ({
-        page: P.pipe ([asPage (at.ctx), drawnWith (said)]),
+        page: P.pipe (asPage (at.ctx), drawnWith (said)),
         endpoint: noPageToDraw<C>,
       }) (at.route),
   })

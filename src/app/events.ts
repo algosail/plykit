@@ -245,7 +245,7 @@ export function channel<C extends Context = Context>(
           F.resolve (eventStream (since (ctx.request), options)),
       },
     }),
-    stale: P.pipe ([stalePart, announce]),
+    stale: P.pipe (stalePart, announce),
     send: announce,
   }
 }

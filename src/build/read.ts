@@ -10,11 +10,11 @@ const isRecord = (parsed: Json): parsed is Prebuilt => P.isStrMap (parsed)
 const readingAt = (path: string): F.Future<unknown, string> =>
   F.attemptP (() => readText (path))
 
-const textAt: (path: string) => F.Future<unknown, P.Maybe<string>> = P.pipe ([
+const textAt: (path: string) => F.Future<unknown, P.Maybe<string>> = P.pipe (
   readingAt,
   F.coalesce (P.left<unknown, string>) (P.right<unknown, string>),
   P.map (P.eitherToMaybe<unknown, string>),
-])
+)
 
 const asPrebuilt = (said: string): P.Maybe<Prebuilt> =>
   P.chain (P.fromPredicate (isRecord)) (P.parseJson (said) as P.Maybe<Json>)

@@ -133,7 +133,7 @@ const loadedIn =
   <C extends Context>(at: Preparing<C>) =>
   (route: PageRoute<C, Json>) =>
   (request: Request): F.Future<unknown, Loaded<Json>> =>
-    P.chain (P.pipe ([contextAt (at) (request), route.load])) (stateFor (at) (request))
+    P.chain (P.pipe (contextAt (at) (request), route.load)) (stateFor (at) (request))
 
 const visiting =
   <C extends Context>(at: Preparing<C>) =>
@@ -222,4 +222,4 @@ const prebuiltIn = <C extends Context>(data: Prebuilt) => (route: Route<C>): Rou
 export const prebuilt = <C extends Context = Context>(
   data: Prebuilt,
 ): (routes: Routes<C>) => readonly Route<C>[] =>
-  P.pipe ([flat, P.map (prebuiltIn<C> (data))])
+  P.pipe (flat, P.map (prebuiltIn<C> (data)))

@@ -148,7 +148,7 @@ const cutAt = (raw: string) => (mark: number): Carried =>
 const isInside = (mark: number): boolean => mark > 0
 
 const carriedIn = (raw: string): P.Maybe<Carried> =>
-  P.pipe ([P.fromPredicate (isInside), P.map (cutAt (raw))]) (raw.indexOf ('='))
+  P.pipe (P.fromPredicate (isInside), P.map (cutAt (raw))) (raw.indexOf ('='))
 
 const firstWins = (all: readonly Carried[]): readonly Carried[] =>
   P.reverse (all)
@@ -162,10 +162,10 @@ const firstWins = (all: readonly Carried[]): readonly Carried[] =>
  * // => { visitor: 'anya', theme: 'dark' }
  * ```
  */
-export const read: (header: string) => Readonly<P.StrMap<string>> = P.pipe ([
+export const read: (header: string) => Readonly<P.StrMap<string>> = P.pipe (
   P.splitOn (';'),
   P.map (carriedIn),
   P.justs,
   firstWins,
   P.fromPairs,
-])
+)

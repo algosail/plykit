@@ -88,10 +88,10 @@ const textOf = P.cases<Chunk, string> ({
 })
 
 /** Every class name the block declares, in the order it declares them. */
-const namesIn: (chunks: readonly Chunk[]) => readonly ClassName[] = P.pipe ([
+const namesIn: (chunks: readonly Chunk[]) => readonly ClassName[] = P.pipe (
   P.chain ((one: Chunk) => captured (textOf (one))),
   P.nub,
-])
+)
 
 const captured = (text: string): readonly ClassName[] =>
   P.justs (P.firstCaptures (CLASS) (text))
@@ -101,7 +101,7 @@ const scopedTo =
     P.pair (name, `${name}_${id}`)
 
 const classesFor = (id: BlockId): (names: readonly ClassName[]) => Classes =>
-  P.pipe ([P.map (scopedTo (id)), P.fromPairs])
+  P.pipe (P.map (scopedTo (id)), P.fromPairs)
 
 const renamed = (classes: Classes) => (text: string): string =>
   text.replace (
@@ -130,7 +130,7 @@ const rewritten = (classes: Classes) =>
 export const compile = (raw: string): Compiled => {
   const id = hash (raw)
   const chunks = chunksOf (raw)
-  const classes = P.pipe ([namesIn, classesFor (id)]) (chunks)
+  const classes = P.pipe (namesIn, classesFor (id)) (chunks)
   return {
     id,
     classes,
@@ -312,7 +312,7 @@ export const styleIds = (): readonly BlockId[] =>
  * ```ts
  * // resetStyles :: () -> void
  * resetStyles ()
- * pipe ([tap (() => resetStyles ()), render]) (page)
+ * pipe (tap (() => resetStyles ()), render) (page)
  * ```
  */
 export const resetStyles = (): void => forgetAll ()

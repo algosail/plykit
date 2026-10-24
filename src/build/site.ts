@@ -252,7 +252,7 @@ const as404 = (bytes: number): Done =>
 
 const writingMissing =
   (at: Writing) => (res: Response): F.Future<unknown, Done> =>
-    P.map (as404) (P.pipe ([bodyOf, P.chain (puttingIn (at) ('404.html'))]) (res))
+    P.map (as404) (P.pipe (bodyOf, P.chain (puttingIn (at) ('404.html'))) (res))
 
 const notMissing = (path: string) => (res: Response): F.Future<unknown, Done> =>
   F.resolve (onlySkipped ({

@@ -131,11 +131,11 @@ const insideOf = (dir: URL) => (target: URL): boolean =>
   P.startsWith (dir.href) (target.href)
 
 const under = (dir: URL) => (serves: Claim): (rest: string) => P.Maybe<URL> =>
-  P.pipe ([
+  P.pipe (
     unescaped,
     P.filter (P.predicateAnd (P.predicate (isUsable)) (P.predicate (serves))),
-    P.chain (P.pipe ([resolvedIn (dir), P.fromPredicate (insideOf (dir))])),
-  ])
+    P.chain (P.pipe (resolvedIn (dir), P.fromPredicate (insideOf (dir)))),
+  )
 
 const asUrl = (dir: URL | string): URL =>
   P.maybe_ (
@@ -150,7 +150,7 @@ const closed = (url: URL): URL =>
   P.onlyIf (!P.endsWith ('/') (url.href)) (withSlash) (url)
 
 /** A directory as a URL that other URLs can be resolved against: a path becomes a file URL, and a URL that does not end in a slash gets one — without it, resolving a name against it would replace the last segment instead of going inside. */
-export const directory: (dir: URL | string) => URL = P.pipe ([asUrl, closed])
+export const directory: (dir: URL | string) => URL = P.pipe (asUrl, closed)
 
 /** A directory ready to serve: everything the options decided, worked out once. */
 type Serving = {
@@ -305,7 +305,7 @@ const served = (asked: Asked): F.Future<unknown, P.Maybe<Reply>> =>
 export const files = (
   options: StaticOptions,
 ): (request: Request) => F.Future<unknown, P.Maybe<Reply>> =>
-  P.pipe ([askedOf (servingOf (options)), served])
+  P.pipe (askedOf (servingOf (options)), served)
 
 /** The default prefix, so an app and its markup can agree without a string. */
 export const STATIC_BASE = BASE

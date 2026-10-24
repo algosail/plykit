@@ -27,7 +27,10 @@ import { digest } from './sign.ts'
 export function stack<C extends Context = Context>(
   middlewares: readonly Middleware<C>[],
 ): Middleware<C> {
-  return P.pipe (P.reverse (middlewares)) as Middleware<C>
+  return (next: Answering<C>): Answering<C> =>
+    P.foldr ((mw: Middleware<C>, acc: Answering<C>) => mw (acc)) (next) (
+      middlewares,
+    )
 }
 
 /**
@@ -71,7 +74,7 @@ const isAmong = (claimed: Set<string>) => (ctx: Context<unknown>): boolean =>
 export function only<C extends Context = Context>(
   routes: Routes<C> | Route<C>,
 ): (middleware: Middleware<C>) => Middleware<C> {
-  return P.pipe ([idsIn<C>, isAmong, when]) (routes)
+  return P.pipe (idsIn<C>, isAmong, when) (routes)
 }
 
 /**
@@ -135,7 +138,7 @@ export function watch<C extends Context = Context>(
 export function before<C extends Context = Context>(
   change: (ctx: C) => C,
 ): Middleware<C> {
-  return (next: Answering<C>): Answering<C> => P.pipe ([change, next])
+  return (next: Answering<C>): Answering<C> => P.pipe (change, next)
 }
 
 /** Who may call this from another site, and with what. */
@@ -202,10 +205,10 @@ const isPreflight = (ctx: Context<unknown>): boolean =>
  * ```
  */
 export function cors<C extends Context = Context>(options: CorsOptions = {}): Middleware<C> {
-  const dressed: (reply: Reply) => Reply = P.pipe ([
+  const dressed: (reply: Reply) => Reply = P.pipe (
     Rp.headers (allowingOf (options)),
     P.onlyIf (!isForEverybody (options)) (Rp.vary ('origin')),
-  ])
+  )
 
   return (next: Answering<C>): Answering<C> =>
     P.ifElse<C> (isPreflight) (
@@ -235,18 +238,18 @@ const carriesCookie = (ctx: Context<unknown>): boolean =>
 const stamped = (tag: string): (reply: Sent) => Sent =>
   P.modify ('headers') (P.insert ('etag') (tag))
 
-const emptied: (reply: Sent) => Sent = P.pipe ([
-  P.set ('status') (304),
-  P.set ('body') (null),
-])
+const emptied: (reply: Sent) => Sent = P.pipe (
+  (reply: Sent) => P.set ('status')<Sent['status']> (304) (reply),
+  (reply: Sent) => P.set ('body')<Sent['body']> (null) (reply),
+)
 
 const answeredWith =
   (ctx: Context<unknown>) => (reply: Drawn) => (tag: string): Reply =>
-    P.pipe ([
+    P.pipe (
       stamped (tag),
       P.onlyIf (hasAlready (ctx) (tag)) (emptied),
       P.onlyIf (carriesCookie (ctx)) (Rp.vary ('cookie')<Sent>),
-    ]) (reply)
+    ) (reply)
 
 /**
  * Answers a page the browser already has with 304 and no body.
@@ -289,11 +292,11 @@ const OWN: Readonly<P.StrMap<string>> = {
 const asDirective = (one: P.Pair<string, string>): string =>
   `${one.fst} ${one.snd}`
 
-const policyOf: (said: Readonly<P.StrMap<string>>) => string = P.pipe ([
+const policyOf: (said: Readonly<P.StrMap<string>>) => string = P.pipe (
   P.sortedPairs,
   P.map (asDirective),
   P.joinWith ('; '),
-])
+)
 
 const fieldOf: (reportOnly: boolean) => string = P.boolean (
   'content-security-policy',
@@ -365,5 +368,5 @@ export function trailingSlash<C extends Context = Context>(
 export function instead<C extends Context = Context>(
   reply: (ctx: C) => Reply,
 ): Middleware<C> {
-  return (_next: Answering<C>): Answering<C> => P.pipe ([reply, F.resolve])
+  return (_next: Answering<C>): Answering<C> => P.pipe (reply, F.resolve)
 }

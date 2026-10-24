@@ -267,7 +267,7 @@ export const onto = (
   source: Reply,
 ): <A extends Answer>(answer: A) => A =>
 <A extends Answer>(answer: A): A =>
-  P.pipe ([headers (source.headers), cookies (source.cookies)]) (answer)
+  P.pipe (headers (source.headers), cookies (source.cookies)) (answer)
 
 /**
  * One more header on an answer.
@@ -284,11 +284,11 @@ export const header =
 
 const isBlank = (s: string): boolean => s === ''
 
-const namesIn: (said: string) => readonly string[] = P.pipe ([
+const namesIn: (said: string) => readonly string[] = P.pipe (
   P.splitOn (','),
   P.map (P.trim),
   P.reject (isBlank),
-])
+)
 
 const listedIn: (said: P.Maybe<string>) => readonly string[] = P.maybe_ (
   P.K<readonly string[]> ([]),

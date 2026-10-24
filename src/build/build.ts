@@ -424,7 +424,7 @@ export const lastSheet = (
   outDir: string,
   base?: string,
 ): F.Future<unknown, Sheet> =>
-  P.map (P.pipe ([sheetIn, servedFrom (P.fromNullable (base))])) (recordAt (outDir))
+  P.map (P.pipe (sheetIn, servedFrom (P.fromNullable (base)))) (recordAt (outDir))
 
 const servedFrom = (base: P.Maybe<string>) => (one: Sheet): Sheet =>
   P.maybe_ (P.K (one)) ((at: string): Sheet => ({
@@ -437,10 +437,10 @@ const PLAIN = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/
 const isPlain = (name: unknown): name is string =>
   typeof name === 'string' && P.test (PLAIN) (name)
 
-const recorded: (record: P.Maybe<unknown>) => readonly string[] = P.pipe ([
+const recorded: (record: P.Maybe<unknown>) => readonly string[] = P.pipe (
   fieldIn ('files'),
   listedBy (isPlain),
-])
+)
 
 const removing = (outDir: string) => (name: string): F.Future<unknown, void> =>
   P.voided (
@@ -897,13 +897,13 @@ const withBytes =
 
 const madeIn = <C extends Context>(one: Building<C>): F.Future<unknown, Made> =>
   P.chain (
-    P.pipe ([
+    P.pipe (
       withEntries (one),
       P.chain (withSheet (one)),
       P.chain (withData (one)),
       P.chain (withFiles (one)),
       P.chain (withBytes (one)),
-    ]),
+    ),
   ) (P.map (asEnv) (inlining (one)))
 
 const asBuilt = <C extends Context>(one: Building<C>) => (made: Made): Built => ({
